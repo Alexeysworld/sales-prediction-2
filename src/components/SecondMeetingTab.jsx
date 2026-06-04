@@ -67,6 +67,9 @@ export default function SecondMeetingTab() {
 
   return (
     <div>
+      <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>
+        CR во вторую встречу по людям
+      </div>
       {/* KPI */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 12 }}>
         <div style={kpiCard}>

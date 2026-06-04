@@ -21,16 +21,32 @@ const median = (arr) => {
 };
 const recPct = (s) => (s.reduce((a, b) => a + b, 0) / MQ_MAX) * 100;
 const monthOf = (d) => d.slice(0, 7);
+const ALL_MQ_MONTHS = [...new Set(MEETING_QUALITY.map((r) => monthOf(r.d)))].sort();
+
+const selStyle = {
+  padding: "4px 8px",
+  fontSize: 12,
+  border: "0.5px solid var(--color-border-tertiary,#ddd)",
+  borderRadius: 6,
+  background: "var(--color-background-primary,#fff)",
+  color: "var(--color-text-primary,#333)",
+  cursor: "pointer",
+};
 
 export default function MeetingQualityTab() {
   const [mode, setMode] = useState("overall"); // overall | criteria
   const [aggMode, setAggMode] = useState("mean"); // mean | median
+  const [from, setFrom] = useState(ALL_MQ_MONTHS[0]);
+  const [to, setTo] = useState(ALL_MQ_MONTHS[ALL_MQ_MONTHS.length - 1]);
   const [sort, setSort] = useState({ key: "pct", dir: "desc" });
   const [openPat, setOpenPat] = useState(null); // раскрытый консультант в паттернах
 
   const agg = aggMode === "median" ? median : mean;
 
-  const data = MEETING_QUALITY;
+  const data = MEETING_QUALITY.filter((r) => {
+    const m = monthOf(r.d);
+    return m >= from && m <= to;
+  });
   const months = [...new Set(data.map((r) => monthOf(r.d)))].sort();
 
   // агрегат % по каждому критерию (от макс)
@@ -89,8 +105,21 @@ export default function MeetingQualityTab() {
 
   return (
     <div>
-      {/* Переключатель среднее / медиана */}
-      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12 }}>
+      {/* Период + переключатель среднее / медиана */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 12, color: "var(--color-text-secondary,#888)" }}>Период:</span>
+        <select style={selStyle} value={from} onChange={(e) => setFrom(e.target.value)}>
+          {ALL_MQ_MONTHS.map((m) => (
+            <option key={m} value={m} disabled={m > to}>{fmL(m)}</option>
+          ))}
+        </select>
+        <span style={{ fontSize: 12, color: "var(--color-text-secondary,#888)" }}>—</span>
+        <select style={selStyle} value={to} onChange={(e) => setTo(e.target.value)}>
+          {ALL_MQ_MONTHS.map((m) => (
+            <option key={m} value={m} disabled={m < from}>{fmL(m)}</option>
+          ))}
+        </select>
+        <span style={{ width: 12 }} />
         <span style={{ fontSize: 12, color: "var(--color-text-secondary,#888)", marginRight: 2 }}>Агрегат:</span>
         <button style={pill(aggMode === "mean")} onClick={() => setAggMode("mean")}>Среднее</button>
         <button style={pill(aggMode === "median")} onClick={() => setAggMode("median")}>Медиана</button>

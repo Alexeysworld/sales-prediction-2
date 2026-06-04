@@ -16,7 +16,7 @@ const SUB_TABS = [
   { id: "people", label: "CR в продажу по людям" },
   { id: "rating", label: "Рейтинг людей по конверсиям" },
   { id: "quality", label: "Качество первой встречи" },
-  { id: "second", label: "CR во вторую встречу по людям" },
+  { id: "second", label: "CR во 2-ю встречу" },
 ];
 
 const FILTERS = [
@@ -61,45 +61,24 @@ export default function App() {
         Дашборд команды продаж
       </h1>
 
-      {/* Верхний уровень навигации */}
-      <div
-        style={{
-          display: "flex",
-          gap: 20,
-          borderBottom: "0.5px solid var(--color-border-tertiary,#e0e0e0)",
-          marginBottom: 16,
-        }}
-      >
-        <button style={topTabStyle(topTab === "analytics")} onClick={() => setTopTab("analytics")}>
-          Аналитика
-        </button>
-        <button style={topTabStyle(topTab === "forecast")} onClick={() => setTopTab("forecast")}>
-          Прогноз
-        </button>
-      </div>
-
-      {/* Второй уровень + фильтр */}
+      {/* Верхний уровень навигации + фильтр справа */}
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
+          gap: 16,
+          borderBottom: "0.5px solid var(--color-border-tertiary,#e0e0e0)",
           marginBottom: 16,
-          gap: 12,
-          flexWrap: "wrap",
         }}
       >
-        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-          {topTab === "analytics" &&
-            SUB_TABS.map((t) => (
-              <button
-                key={t.id}
-                style={subT(subTab === t.id)}
-                onClick={() => setSubTab(t.id)}
-              >
-                {t.label}
-              </button>
-            ))}
+        <div style={{ display: "flex", gap: 20 }}>
+          <button style={topTabStyle(topTab === "analytics")} onClick={() => setTopTab("analytics")}>
+            Аналитика
+          </button>
+          <button style={topTabStyle(topTab === "forecast")} onClick={() => setTopTab("forecast")}>
+            Прогноз
+          </button>
         </div>
 
         {showFilter && (
@@ -116,6 +95,29 @@ export default function App() {
           </div>
         )}
       </div>
+
+      {/* Второй уровень — подвкладки в одну строку */}
+      {topTab === "analytics" && (
+        <div
+          style={{
+            display: "flex",
+            gap: 4,
+            flexWrap: "nowrap",
+            overflowX: "auto",
+            marginBottom: 16,
+          }}
+        >
+          {SUB_TABS.map((t) => (
+            <button
+              key={t.id}
+              style={{ ...subT(subTab === t.id), padding: "5px 9px", whiteSpace: "nowrap", flexShrink: 0 }}
+              onClick={() => setSubTab(t.id)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Контент */}
       {topTab === "analytics" && (
