@@ -1,8 +1,16 @@
 import { useState } from "react";
-import { card, pill, th2, td2, kpiCard, heatColors } from "../utils/styles.js";
+import { card, pill, th2, td2, kpiCard } from "../utils/styles.js";
 import { TC, PAL, C_POS } from "../constants.js";
 import { fmL } from "../utils/dateUtils.js";
 import { MEETING_QUALITY, MQ_CRITERIA, MQ_MAX } from "../data/meetingQuality.js";
+import { MQ_PATTERNS, MQ_BENCHMARKS } from "../data/meetingPatterns.js";
+
+// Пастельная тепловая карта: красный (0%) → жёлтый (50%) → зелёный (100%)
+function pastelHeat(pct) {
+  if (pct == null) return { bg: "transparent", fg: "var(--color-text-tertiary,#aaa)" };
+  const h = Math.max(0, Math.min(120, (pct / 100) * 120)); // 0=красный, 120=зелёный
+  return { bg: `hsl(${h.toFixed(0)}, 62%, 80%)`, fg: "#33402e" };
+}
 
 const mean = (arr) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0);
 const recPct = (s) => (s.reduce((a, b) => a + b, 0) / MQ_MAX) * 100;
@@ -11,6 +19,7 @@ const monthOf = (d) => d.slice(0, 7);
 export default function MeetingQualityTab() {
   const [mode, setMode] = useState("overall"); // overall | criteria
   const [sort, setSort] = useState({ key: "pct", dir: "desc" });
+  const [openPat, setOpenPat] = useState(null); // раскрытый консультант в паттернах
 
   const data = MEETING_QUALITY;
   const months = [...new Set(data.map((r) => monthOf(r.d)))].sort();
@@ -168,11 +177,11 @@ export default function MeetingQualityTab() {
                   <td style={{ ...td2, color: TC[r.team] || "var(--color-text-secondary,#888)" }}>{r.team || "—"}</td>
                   <td style={{ ...td2, textAlign: "center" }}>{r.n}</td>
                   {(() => {
-                    const { bg, fg } = heatColors(r.pct / 8); // переводим % в шкалу heatColors (0..>12)
+                    const { bg, fg } = pastelHeat(r.pct);
                     return <td style={{ ...td2, textAlign: "center", fontWeight: 600, background: bg, color: fg }}>{r.pct.toFixed(0)}%</td>;
                   })()}
                   {r.crit.map((v, i) => {
-                    const { bg, fg } = heatColors(v / 8);
+                    const { bg, fg } = pastelHeat(v);
                     return <td key={i} style={{ ...td2, textAlign: "center", background: bg, color: fg }}>{v.toFixed(0)}%</td>;
                   })}
                 </tr>
@@ -184,6 +193,59 @@ export default function MeetingQualityTab() {
           Оценка качества первичных встреч за {fmL(months[0])} — {fmL(months[months.length - 1])}. Итог = сумма
           баллов / {MQ_MAX}. Фильтр «Горячие/Холодные» к этой вкладке не применяется.
         </div>
+      </div>
+
+      {/* Повторяющиеся паттерны ошибок */}
+      <div style={card}>
+        <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 6 }}>
+          Повторяющиеся паттерны ошибок
+        </div>
+        <div style={{ fontSize: 11, color: "var(--color-text-secondary,#888)", marginBottom: 12 }}>
+          По слабым критериям (Цели клиента, Инструменты/конкуренты, Закрытие встречи). Выведено из
+          текстовых обоснований низких оценок в сравнении с тем, что требуется для высокой оценки.
+        </div>
+
+        {/* Эталоны */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
+          {[["goals", 2], ["tools", 3], ["closing", 4]].map(([key, ci]) => (
+            <div key={key} style={{ background: "var(--color-background-secondary,#f5f5f5)", borderRadius: 8, padding: "0.6rem 0.7rem", borderTop: `2px solid ${PAL[ci]}` }}>
+              <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4 }}>{MQ_CRITERIA[ci].label}</div>
+              <div style={{ fontSize: 11, color: "var(--color-text-secondary,#888)", lineHeight: 1.4 }}>{MQ_BENCHMARKS[key]}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* По консультантам (худшие сверху) */}
+        {[...consRows].sort((a, b) => a.pct - b.pct).map((r) => {
+          const pat = MQ_PATTERNS[r.name];
+          if (!pat) return null;
+          const open = openPat === r.name;
+          return (
+            <div key={r.name} style={{ borderBottom: "0.5px solid var(--color-border-tertiary,#e0e0e0)" }}>
+              <div
+                onClick={() => setOpenPat(open ? null : r.name)}
+                style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 2px", cursor: "pointer" }}
+              >
+                <span style={{ fontSize: 11, color: "var(--color-text-tertiary,#aaa)", width: 12 }}>{open ? "▾" : "▸"}</span>
+                <span style={{ fontWeight: 500, fontSize: 13, minWidth: 90 }}>{r.name}</span>
+                <span style={{ fontSize: 12, color: TC[r.team] || "var(--color-text-secondary,#888)" }}>{r.team || "—"}</span>
+                <span style={{ fontSize: 11, color: "var(--color-text-secondary,#888)" }}>общая {r.pct.toFixed(0)}% · {r.n} встреч</span>
+              </div>
+              {open && (
+                <div style={{ padding: "2px 0 12px 24px", display: "flex", flexDirection: "column", gap: 8 }}>
+                  {[["goals", 2], ["tools", 3], ["closing", 4]].map(([key, ci]) =>
+                    pat[key] ? (
+                      <div key={key} style={{ fontSize: 12, lineHeight: 1.45 }}>
+                        <span style={{ fontWeight: 500, color: PAL[ci] }}>{MQ_CRITERIA[ci].label}: </span>
+                        <span style={{ color: "var(--color-text-primary,#333)" }}>{pat[key]}</span>
+                      </div>
+                    ) : null
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
