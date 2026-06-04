@@ -5,15 +5,19 @@ import { pConv, has2025 } from "../utils/convUtils.js";
 
 // Факт конверсий за 2025 (рейтинг людей по конверсиям)
 export default function PConvTable({ data }) {
-  const [sort, setSort] = useState({ key: "hotConv", dir: "desc" });
+  const [sort, setSort] = useState({ key: "allConv", dir: "desc" });
 
   const rows = data.map((d) => {
+    const all = pConv(d, "all");
     const hot = pConv(d, "hot");
     const cold = pConv(d, "cold");
     return {
       name: d.name,
       team: d.team,
       hasData: has2025(d),
+      allM: all.meetings,
+      allS: all.sales,
+      allConv: all.conv,
       hotM: hot.meetings,
       hotS: hot.sales,
       hotConv: hot.conv,
@@ -52,6 +56,9 @@ export default function PConvTable({ data }) {
   const cols = [
     { key: "name", label: "Консультант" },
     { key: "team", label: "Команда" },
+    { key: "allM", label: "Всего встр" },
+    { key: "allS", label: "Всего прод" },
+    { key: "allConv", label: "Конв общая%", heat: true },
     { key: "hotM", label: "Гор. встр" },
     { key: "hotS", label: "Гор. прод" },
     { key: "hotConv", label: "Конв гор%", heat: true },
@@ -101,6 +108,9 @@ export default function PConvTable({ data }) {
                   {r.name} {!r.hasData && <span title="Нет данных за 2025">🆕</span>}
                 </td>
                 <td style={{ ...td2, color: TC[r.team] }}>{r.team}</td>
+                <td style={{ ...td2, textAlign: "center" }}>{r.allM}</td>
+                <td style={{ ...td2, textAlign: "center" }}>{r.allS}</td>
+                <ConvCell conv={r.allConv} />
                 <td style={{ ...td2, textAlign: "center" }}>{r.hotM}</td>
                 <td style={{ ...td2, textAlign: "center" }}>{r.hotS}</td>
                 <ConvCell conv={r.hotConv} />

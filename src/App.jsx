@@ -58,7 +58,7 @@ export default function App() {
       }}
     >
       <h1 style={{ fontSize: 20, fontWeight: 600, marginBottom: 16 }}>
-        Встречи → Оплата
+        Дашборд команды продаж
       </h1>
 
       {/* Верхний уровень навигации */}
