@@ -25,10 +25,16 @@ const FILTERS = [
   { id: "cold", label: "Холодные" },
 ];
 
+// Подвкладки, к которым применим фильтр Все/Горячие/Холодные (продажи из встреч)
+const CONV_TABS = ["dynamics", "teams", "people", "rating"];
+
 export default function App() {
   const [topTab, setTopTab] = useState("analytics"); // analytics | forecast
   const [subTab, setSubTab] = useState("dynamics");
   const [filter, setFilter] = useState("all");
+
+  // Фильтр виден на вкладках конверсии и в прогнозе
+  const showFilter = topTab === "forecast" || CONV_TABS.includes(subTab);
 
   const topTabStyle = (active) => ({
     padding: "8px 4px",
@@ -96,29 +102,31 @@ export default function App() {
             ))}
         </div>
 
-        <div style={{ display: "flex", gap: 6 }}>
-          {FILTERS.map((f) => (
-            <button
-              key={f.id}
-              style={pill(filter === f.id)}
-              onClick={() => setFilter(f.id)}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
+        {showFilter && (
+          <div style={{ display: "flex", gap: 6 }}>
+            {FILTERS.map((f) => (
+              <button
+                key={f.id}
+                style={pill(filter === f.id)}
+                onClick={() => setFilter(f.id)}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Контент */}
       {topTab === "analytics" && (
         <>
-          <KPIs data={D} filter={filter} />
+          {CONV_TABS.includes(subTab) && <KPIs data={D} filter={filter} />}
           {subTab === "dynamics" && <ConvChart data={D} filter={filter} />}
           {subTab === "teams" && <StatsTable data={D} filter={filter} mode="teams" />}
           {subTab === "people" && <StatsTable data={D} filter={filter} mode="consultants" />}
           {subTab === "rating" && <PConvTable data={D} />}
-          {subTab === "quality" && <MeetingQualityTab data={D} filter={filter} />}
-          {subTab === "second" && <SecondMeetingTab data={D} filter={filter} />}
+          {subTab === "quality" && <MeetingQualityTab />}
+          {subTab === "second" && <SecondMeetingTab />}
         </>
       )}
 

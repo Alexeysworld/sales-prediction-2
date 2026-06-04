@@ -9,7 +9,7 @@ import {
   MNS,
 } from "../constants.js";
 import { HIST_HOT, HIST_COLD } from "../data/meetings.js";
-import { addMo, moN, fmL, fmQ, quarterOf } from "../utils/dateUtils.js";
+import { addMo, moN, fmL, fmQ, quarterOf, quartersOf, monthsInQuarter } from "../utils/dateUtils.js";
 
 const SCENARIOS = [
   {
@@ -131,11 +131,12 @@ export default function ForecastTab({ filter }) {
   const { fMonths, sales } = computeForecast(p);
   const total = Object.values(sales).reduce((a, b) => a + b, 0);
 
-  // Кварталы (первые 3 и последние 3 месяца)
-  const q1Key = quarterOf(fMonths[0]);
-  const q2Key = quarterOf(fMonths[fMonths.length - 1]);
-  const q1Sum = fMonths.slice(0, 3).reduce((a, m) => a + sales[m], 0);
-  const q2Sum = fMonths.slice(3, 6).reduce((a, m) => a + sales[m], 0);
+  // Кварталы (календарные), которые попадают в прогнозный период
+  const quarters = quartersOf(fMonths);
+  const qSum = {};
+  quarters.forEach((q) => {
+    qSum[q] = monthsInQuarter(q, fMonths).reduce((a, m) => a + sales[m], 0);
+  });
 
   const distSum = (arr) => arr.reduce((a, b) => a + b, 0).toFixed(1);
 
@@ -193,12 +194,11 @@ export default function ForecastTab({ filter }) {
                     </th>
                   );
                 })}
-                <th style={{ ...th2, background: "#f0f7ff", textAlign: "center" }}>
-                  {fmQ(q1Key)}
-                </th>
-                <th style={{ ...th2, background: "#f0f7ff", textAlign: "center" }}>
-                  {fmQ(q2Key)}
-                </th>
+                {quarters.map((q) => (
+                  <th key={q} style={{ ...th2, background: "#f0f7ff", textAlign: "center" }}>
+                    {fmQ(q)}
+                  </th>
+                ))}
                 <th
                   style={{
                     ...th2,
@@ -218,12 +218,11 @@ export default function ForecastTab({ filter }) {
                     {sales[m].toFixed(1)}
                   </td>
                 ))}
-                <td style={{ ...td2, background: "#f0f7ff", textAlign: "center", fontWeight: 500 }}>
-                  {q1Sum.toFixed(1)}
-                </td>
-                <td style={{ ...td2, background: "#f0f7ff", textAlign: "center", fontWeight: 500 }}>
-                  {q2Sum.toFixed(1)}
-                </td>
+                {quarters.map((q) => (
+                  <td key={q} style={{ ...td2, background: "#f0f7ff", textAlign: "center", fontWeight: 500 }}>
+                    {qSum[q].toFixed(1)}
+                  </td>
+                ))}
                 <td
                   style={{
                     ...td2,

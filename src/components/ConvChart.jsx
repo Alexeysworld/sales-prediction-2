@@ -184,9 +184,7 @@ export default function ConvChart({ data, filter }) {
               {teamSeries[t].map((p, i) =>
                 p.conv == null ? null : (
                   <circle key={i} cx={x(i)} cy={y(p.conv)} r={3.5} fill={TC[t]} stroke="#fff" strokeWidth={1}>
-                    <title>
-                      {t}: {p.meetings} встр → {p.sales} прод ({p.conv.toFixed(1)}%)
-                    </title>
+                    <title>{`${t}: ${p.meetings} встр → ${p.sales} прод (${p.conv.toFixed(1)}%)`}</title>
                   </circle>
                 )
               )}
@@ -221,9 +219,7 @@ export default function ConvChart({ data, filter }) {
                     stroke="#fff"
                     strokeWidth={1}
                   >
-                    <title>
-                      Всего: {p.meetings} встр → {p.sales} прод ({p.conv.toFixed(1)}%)
-                    </title>
+                    <title>{`Всего: ${p.meetings} встр → ${p.sales} прод (${p.conv.toFixed(1)}%)`}</title>
                   </circle>
                 </g>
               )
