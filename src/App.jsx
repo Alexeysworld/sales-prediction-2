@@ -120,11 +120,11 @@ export default function App() {
       {/* Контент */}
       {topTab === "analytics" && (
         <>
-          {CONV_TABS.includes(subTab) && <KPIs data={D} filter={filter} />}
+          {CONV_TABS.includes(subTab) && subTab !== "rating" && <KPIs data={D} filter={filter} />}
           {subTab === "dynamics" && <ConvChart data={D} filter={filter} />}
           {subTab === "teams" && <StatsTable data={D} filter={filter} mode="teams" />}
           {subTab === "people" && <StatsTable data={D} filter={filter} mode="consultants" />}
-          {subTab === "rating" && <PConvTable data={D} />}
+          {subTab === "rating" && <PConvTable data={D} filter={filter} />}
           {subTab === "quality" && <MeetingQualityTab />}
           {subTab === "second" && <SecondMeetingTab />}
         </>
