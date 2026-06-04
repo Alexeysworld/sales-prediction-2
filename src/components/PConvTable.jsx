@@ -1,29 +1,42 @@
 import { useState } from "react";
 import { card, th2, td2, heatColors } from "../utils/styles.js";
 import { TC } from "../constants.js";
-import { pConv, has2025 } from "../utils/convUtils.js";
+import { gM, gS, cv } from "../utils/convUtils.js";
+import { actMo, fmL } from "../utils/dateUtils.js";
 
-// Факт конверсий за 2025 (рейтинг людей по конверсиям)
+// Рейтинг людей по конверсиям за выбранный период.
 export default function PConvTable({ data }) {
+  const allMonths = actMo(data, "all");
+  const first = allMonths[0] || "2025-01";
+  const last = allMonths[allMonths.length - 1] || "2025-12";
+  // Дефолт: янв–дек 2025 (если есть в диапазоне, иначе весь диапазон)
+  const [from, setFrom] = useState(allMonths.includes("2025-01") ? "2025-01" : first);
+  const [to, setTo] = useState(allMonths.includes("2025-12") ? "2025-12" : last);
   const [sort, setSort] = useState({ key: "allConv", dir: "desc" });
 
+  const range = allMonths.filter((m) => m >= from && m <= to);
+
+  function sumConv(d, type) {
+    let meetings = 0;
+    let sales = 0;
+    for (const k of range) {
+      meetings += gM(d, k, type);
+      sales += gS(d, k, type);
+    }
+    return { meetings, sales, conv: cv(meetings, sales) };
+  }
+
   const rows = data.map((d) => {
-    const all = pConv(d, "all");
-    const hot = pConv(d, "hot");
-    const cold = pConv(d, "cold");
+    const all = sumConv(d, "all");
+    const hot = sumConv(d, "hot");
+    const cold = sumConv(d, "cold");
     return {
       name: d.name,
       team: d.team,
-      hasData: has2025(d),
-      allM: all.meetings,
-      allS: all.sales,
-      allConv: all.conv,
-      hotM: hot.meetings,
-      hotS: hot.sales,
-      hotConv: hot.conv,
-      coldM: cold.meetings,
-      coldS: cold.sales,
-      coldConv: cold.conv,
+      hasData: all.meetings > 0 || all.sales > 0,
+      allM: all.meetings, allS: all.sales, allConv: all.conv,
+      hotM: hot.meetings, hotS: hot.sales, hotConv: hot.conv,
+      coldM: cold.meetings, coldS: cold.sales, coldConv: cold.conv,
     };
   });
 
@@ -44,14 +57,10 @@ export default function PConvTable({ data }) {
 
   function toggleSort(key) {
     setSort((s) =>
-      s.key === key
-        ? { key, dir: s.dir === "asc" ? "desc" : "asc" }
-        : { key, dir: "desc" }
+      s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "desc" }
     );
   }
-
-  const sortArrow = (key) =>
-    sort.key === key ? (sort.dir === "asc" ? " ▲" : " ▼") : "";
+  const sortArrow = (key) => (sort.key === key ? (sort.dir === "asc" ? " ▲" : " ▼") : "");
 
   const cols = [
     { key: "name", label: "Консультант" },
@@ -76,8 +85,34 @@ export default function PConvTable({ data }) {
     );
   }
 
+  const selStyle = {
+    padding: "4px 8px",
+    fontSize: 12,
+    border: "0.5px solid var(--color-border-tertiary,#ddd)",
+    borderRadius: 6,
+    background: "var(--color-background-primary,#fff)",
+    color: "var(--color-text-primary,#333)",
+    cursor: "pointer",
+  };
+
   return (
     <div style={card}>
+      {/* Период */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 12, color: "var(--color-text-secondary,#888)" }}>Период:</span>
+        <select style={selStyle} value={from} onChange={(e) => setFrom(e.target.value)}>
+          {allMonths.map((m) => (
+            <option key={m} value={m} disabled={m > to}>{fmL(m)}</option>
+          ))}
+        </select>
+        <span style={{ fontSize: 12, color: "var(--color-text-secondary,#888)" }}>—</span>
+        <select style={selStyle} value={to} onChange={(e) => setTo(e.target.value)}>
+          {allMonths.map((m) => (
+            <option key={m} value={m} disabled={m < from}>{fmL(m)}</option>
+          ))}
+        </select>
+      </div>
+
       <div style={{ overflowX: "auto" }}>
         <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 600 }}>
           <thead>
@@ -105,9 +140,9 @@ export default function PConvTable({ data }) {
             {rows.map((r) => (
               <tr key={r.name}>
                 <td style={{ ...td2, fontWeight: 500 }}>
-                  {r.name} {!r.hasData && <span title="Нет данных за 2025">🆕</span>}
+                  {r.name} {!r.hasData && <span title="Нет данных за период">🆕</span>}
                 </td>
-                <td style={{ ...td2, color: TC[r.team] }}>{r.team}</td>
+                <td style={{ ...td2, color: TC[r.team] || "var(--color-text-secondary,#888)" }}>{r.team || "—"}</td>
                 <td style={{ ...td2, textAlign: "center" }}>{r.allM}</td>
                 <td style={{ ...td2, textAlign: "center" }}>{r.allS}</td>
                 <ConvCell conv={r.allConv} />
@@ -123,7 +158,8 @@ export default function PConvTable({ data }) {
         </table>
       </div>
       <div style={{ fontSize: 11, color: "var(--color-text-secondary,#888)", marginTop: 10 }}>
-        Конверсия рассчитана за 2025 год (янв–дек).
+        Конверсия рассчитана за период {fmL(range[0] || from)} — {fmL(range[range.length - 1] || to)}.
+        Продажи привязаны к месяцу встречи. Горячая = заявка/ивент/контент, холодная = все − горячие.
       </div>
     </div>
   );

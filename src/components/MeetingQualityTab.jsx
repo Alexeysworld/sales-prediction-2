@@ -13,27 +13,36 @@ function pastelHeat(pct) {
 }
 
 const mean = (arr) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0);
+const median = (arr) => {
+  if (!arr.length) return 0;
+  const s = [...arr].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+};
 const recPct = (s) => (s.reduce((a, b) => a + b, 0) / MQ_MAX) * 100;
 const monthOf = (d) => d.slice(0, 7);
 
 export default function MeetingQualityTab() {
   const [mode, setMode] = useState("overall"); // overall | criteria
+  const [aggMode, setAggMode] = useState("mean"); // mean | median
   const [sort, setSort] = useState({ key: "pct", dir: "desc" });
   const [openPat, setOpenPat] = useState(null); // раскрытый консультант в паттернах
+
+  const agg = aggMode === "median" ? median : mean;
 
   const data = MEETING_QUALITY;
   const months = [...new Set(data.map((r) => monthOf(r.d)))].sort();
 
-  // средний % по каждому критерию (от макс)
-  const critPct = MQ_CRITERIA.map((c, i) => mean(data.map((r) => r.s[i])) / c.max * 100);
-  const overallPct = mean(data.map((r) => recPct(r.s)));
+  // агрегат % по каждому критерию (от макс)
+  const critPct = MQ_CRITERIA.map((c, i) => agg(data.map((r) => r.s[i])) / c.max * 100);
+  const overallPct = agg(data.map((r) => recPct(r.s)));
 
   // помесячно
-  const monthOverall = months.map((m) => mean(data.filter((r) => monthOf(r.d) === m).map((r) => recPct(r.s))));
+  const monthOverall = months.map((m) => agg(data.filter((r) => monthOf(r.d) === m).map((r) => recPct(r.s))));
   const monthCrit = MQ_CRITERIA.map((c, i) =>
     months.map((m) => {
       const recs = data.filter((r) => monthOf(r.d) === m);
-      return recs.length ? mean(recs.map((r) => r.s[i])) / c.max * 100 : null;
+      return recs.length ? agg(recs.map((r) => r.s[i])) / c.max * 100 : null;
     })
   );
 
@@ -47,8 +56,8 @@ export default function MeetingQualityTab() {
     name: c.name,
     team: c.team,
     n: c.recs.length,
-    pct: mean(c.recs.map((r) => recPct(r.s))),
-    crit: MQ_CRITERIA.map((cr, i) => mean(c.recs.map((r) => r.s[i])) / cr.max * 100),
+    pct: agg(c.recs.map((r) => recPct(r.s))),
+    crit: MQ_CRITERIA.map((cr, i) => agg(c.recs.map((r) => r.s[i])) / cr.max * 100),
   }));
   if (sort.key) {
     consRows.sort((a, b) => {
@@ -80,6 +89,13 @@ export default function MeetingQualityTab() {
 
   return (
     <div>
+      {/* Переключатель среднее / медиана */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12 }}>
+        <span style={{ fontSize: 12, color: "var(--color-text-secondary,#888)", marginRight: 2 }}>Агрегат:</span>
+        <button style={pill(aggMode === "mean")} onClick={() => setAggMode("mean")}>Среднее</button>
+        <button style={pill(aggMode === "median")} onClick={() => setAggMode("median")}>Медиана</button>
+      </div>
+
       {/* KPI: общий % + 5 критериев */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 8, marginBottom: 12 }}>
         <div style={kpiCard}>
