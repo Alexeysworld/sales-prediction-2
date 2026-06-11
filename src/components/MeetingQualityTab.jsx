@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, Fragment } from "react";
 import { card, pill, th2, td2, kpiCard } from "../utils/styles.js";
 import { TC, PAL, C_POS } from "../constants.js";
 import { fmL } from "../utils/dateUtils.js";
@@ -22,6 +22,15 @@ const median = (arr) => {
 const recPct = (s) => (s.reduce((a, b) => a + b, 0) / MQ_MAX) * 100;
 const monthOf = (d) => d.slice(0, 7);
 const ALL_MQ_MONTHS = [...new Set(MEETING_QUALITY.map((r) => monthOf(r.d)))].sort();
+// порядок уровней организации (от высшего к низшему) + сегменты
+const LVL_ORDER = ["Platinum", "Gold", "Silver", "Bronze", "Wood", "Нецелевой", "—"];
+const ALL_LEVELS = [...new Set(MEETING_QUALITY.map((r) => r.lvl))].sort(
+  (a, b) => LVL_ORDER.indexOf(a) - LVL_ORDER.indexOf(b)
+);
+const SEG_ORDER = ["Enterprise", "Midmarket", "Small business", "Нецелевой", "—"];
+const ALL_SEGS = [...new Set(MEETING_QUALITY.map((r) => r.seg))].sort(
+  (a, b) => SEG_ORDER.indexOf(a) - SEG_ORDER.indexOf(b)
+);
 
 const selStyle = {
   padding: "4px 8px",
@@ -33,6 +42,17 @@ const selStyle = {
   cursor: "pointer",
 };
 
+const toggleIn = (arr, val) => (arr.includes(val) ? arr.filter((x) => x !== val) : [...arr, val]);
+const chip = (active) => ({
+  padding: "3px 10px",
+  fontSize: 11,
+  borderRadius: 12,
+  cursor: "pointer",
+  border: `0.5px solid ${active ? "transparent" : "var(--color-border-tertiary,#ddd)"}`,
+  background: active ? "var(--color-text-primary,#333)" : "transparent",
+  color: active ? "#fff" : "var(--color-text-secondary,#888)",
+});
+
 export default function MeetingQualityTab() {
   const [mode, setMode] = useState("overall"); // overall | criteria
   const [aggMode, setAggMode] = useState("mean"); // mean | median
@@ -40,12 +60,15 @@ export default function MeetingQualityTab() {
   const [to, setTo] = useState(ALL_MQ_MONTHS[ALL_MQ_MONTHS.length - 1]);
   const [sort, setSort] = useState({ key: "pct", dir: "desc" });
   const [openPat, setOpenPat] = useState(null); // раскрытый консультант в паттернах
+  const [selLevels, setSelLevels] = useState(ALL_LEVELS); // мультиселект уровней
+  const [selSegs, setSelSegs] = useState(ALL_SEGS); // мультиселект сегментов
+  const [openDeals, setOpenDeals] = useState(null); // { name, key } — раскрытый список сделок
 
   const agg = aggMode === "median" ? median : mean;
 
   const data = MEETING_QUALITY.filter((r) => {
     const m = monthOf(r.d);
-    return m >= from && m <= to;
+    return m >= from && m <= to && selLevels.includes(r.lvl) && selSegs.includes(r.seg);
   });
   const months = [...new Set(data.map((r) => monthOf(r.d)))].sort();
 
@@ -103,6 +126,57 @@ export default function MeetingQualityTab() {
     return pts.length ? "M" + pts.join("L") : "";
   };
 
+  // Список сделок консультанта (для раскрытия по клику на ячейку)
+  function renderDeals(name, key) {
+    const recs = data
+      .filter((r) => r.c === name)
+      .map((r) => ({
+        deal: r.deal, lvl: r.lvl, seg: r.seg,
+        overall: recPct(r.s),
+        crit: MQ_CRITERIA.map((c, i) => (r.s[i] / c.max) * 100),
+      }));
+    const val = (x) => (key === "pct" ? x.overall : x.crit[key]);
+    recs.sort((a, b) => val(b) - val(a));
+    const thd = { ...th2, padding: "4px 6px", whiteSpace: "nowrap" };
+    const tdd = { ...td2, padding: "4px 6px" };
+    const hl = "#e3ecf7";
+    return (
+      <div>
+        <div style={{ fontSize: 11, color: "var(--color-text-secondary,#888)", marginBottom: 6 }}>
+          Сделки: {name} — {recs.length}. Сортировка по «{key === "pct" ? "Общая" : MQ_CRITERIA[key].label}».
+        </div>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 560, background: "var(--color-background-primary,#fff)" }}>
+            <thead>
+              <tr>
+                <th style={{ ...thd, textAlign: "left" }}>Сделка</th>
+                <th style={{ ...thd, textAlign: "center", background: key === "pct" ? hl : undefined }}>Общая</th>
+                {MQ_CRITERIA.map((c, i) => (
+                  <th key={c.key} style={{ ...thd, textAlign: "center", background: key === i ? hl : undefined }}>{c.label}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {recs.map((d, idx) => {
+                const oc = pastelHeat(d.overall);
+                return (
+                  <tr key={idx}>
+                    <td style={{ ...tdd, maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={`${d.deal} · ${d.lvl} · ${d.seg}`}>{d.deal}</td>
+                    <td style={{ ...tdd, textAlign: "center", fontWeight: 600, background: oc.bg, color: oc.fg }}>{d.overall.toFixed(0)}%</td>
+                    {d.crit.map((v, i) => {
+                      const { bg, fg } = pastelHeat(v);
+                      return <td key={i} style={{ ...tdd, textAlign: "center", background: bg, color: fg }}>{v.toFixed(0)}%</td>;
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
       {/* Период + переключатель среднее / медиана */}
@@ -123,6 +197,19 @@ export default function MeetingQualityTab() {
         <span style={{ fontSize: 12, color: "var(--color-text-secondary,#888)", marginRight: 2 }}>Агрегат:</span>
         <button style={pill(aggMode === "mean")} onClick={() => setAggMode("mean")}>Среднее</button>
         <button style={pill(aggMode === "median")} onClick={() => setAggMode("median")}>Медиана</button>
+      </div>
+
+      {/* Мультиселект: уровень организации + сегмент рынка */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+        <span style={{ fontSize: 12, color: "var(--color-text-secondary,#888)" }}>Уровень:</span>
+        {ALL_LEVELS.map((l) => (
+          <button key={l} style={chip(selLevels.includes(l))} onClick={() => setSelLevels(toggleIn(selLevels, l))}>{l}</button>
+        ))}
+        <span style={{ width: 8 }} />
+        <span style={{ fontSize: 12, color: "var(--color-text-secondary,#888)" }}>Сегмент:</span>
+        {ALL_SEGS.map((s) => (
+          <button key={s} style={chip(selSegs.includes(s))} onClick={() => setSelSegs(toggleIn(selSegs, s))}>{s}</button>
+        ))}
       </div>
 
       {/* KPI: общий % + 5 критериев */}
@@ -216,27 +303,50 @@ export default function MeetingQualityTab() {
               </tr>
             </thead>
             <tbody>
-              {consRows.map((r) => (
-                <tr key={r.name}>
-                  <td style={{ ...td2, fontWeight: 500 }}>{r.name}</td>
-                  <td style={{ ...td2, color: TC[r.team] || "var(--color-text-secondary,#888)" }}>{r.team || "—"}</td>
-                  <td style={{ ...td2, textAlign: "center" }}>{r.n}</td>
-                  {(() => {
-                    const { bg, fg } = pastelHeat(r.pct);
-                    return <td style={{ ...td2, textAlign: "center", fontWeight: 600, background: bg, color: fg }}>{r.pct.toFixed(0)}%</td>;
-                  })()}
-                  {r.crit.map((v, i) => {
-                    const { bg, fg } = pastelHeat(v);
-                    return <td key={i} style={{ ...td2, textAlign: "center", background: bg, color: fg }}>{v.toFixed(0)}%</td>;
-                  })}
-                </tr>
-              ))}
+              {consRows.map((r) => {
+                const isOpen = openDeals && openDeals.name === r.name;
+                const click = (key) =>
+                  setOpenDeals(isOpen && openDeals.key === key ? null : { name: r.name, key });
+                const cellStyle = (bg, fg, active) => ({
+                  ...td2, textAlign: "center", background: bg, color: fg, cursor: "pointer",
+                  outline: active ? "2px solid var(--color-text-primary,#333)" : "none", outlineOffset: "-2px",
+                });
+                const oa = pastelHeat(r.pct);
+                return (
+                  <Fragment key={r.name}>
+                    <tr>
+                      <td style={{ ...td2, fontWeight: 500 }}>{r.name}</td>
+                      <td style={{ ...td2, color: TC[r.team] || "var(--color-text-secondary,#888)" }}>{r.team || "—"}</td>
+                      <td style={{ ...td2, textAlign: "center" }}>{r.n}</td>
+                      <td style={{ ...cellStyle(oa.bg, oa.fg, isOpen && openDeals.key === "pct"), fontWeight: 600 }} onClick={() => click("pct")}>
+                        {r.pct.toFixed(0)}%
+                      </td>
+                      {r.crit.map((v, i) => {
+                        const { bg, fg } = pastelHeat(v);
+                        return (
+                          <td key={i} style={cellStyle(bg, fg, isOpen && openDeals.key === i)} onClick={() => click(i)}>
+                            {v.toFixed(0)}%
+                          </td>
+                        );
+                      })}
+                    </tr>
+                    {isOpen && (
+                      <tr>
+                        <td colSpan={4 + MQ_CRITERIA.length} style={{ ...td2, background: "var(--color-background-secondary,#f5f5f5)", padding: "8px 12px" }}>
+                          {renderDeals(r.name, openDeals.key)}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
         <div style={{ fontSize: 11, color: "var(--color-text-secondary,#888)", marginTop: 10 }}>
-          Оценка качества первичных встреч за {fmL(months[0])} — {fmL(months[months.length - 1])}. Итог = сумма
-          баллов / {MQ_MAX}. Фильтр «Горячие/Холодные» к этой вкладке не применяется.
+          Оценка качества первичных встреч за {fmL(months[0] || from)} — {fmL(months[months.length - 1] || to)}.
+          Итог = сумма баллов / {MQ_MAX}. Клик по проценту раскрывает сделки консультанта. Фильтр
+          «Горячие/Холодные» к этой вкладке не применяется.
         </div>
       </div>
 
