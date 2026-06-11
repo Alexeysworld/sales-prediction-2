@@ -1,4 +1,4 @@
-import { useState, Fragment } from "react";
+import { useState } from "react";
 import { card, pill, th2, td2, kpiCard } from "../utils/styles.js";
 import { TC, PAL, C_POS } from "../constants.js";
 import { fmL } from "../utils/dateUtils.js";
@@ -131,7 +131,7 @@ export default function MeetingQualityTab() {
     const recs = data
       .filter((r) => r.c === name)
       .map((r) => ({
-        deal: r.deal, lvl: r.lvl, seg: r.seg,
+        deal: r.deal, lvl: r.lvl, seg: r.seg, url: r.url,
         overall: recPct(r.s),
         crit: MQ_CRITERIA.map((c, i) => (r.s[i] / c.max) * 100),
       }));
@@ -143,7 +143,7 @@ export default function MeetingQualityTab() {
     return (
       <div>
         <div style={{ fontSize: 11, color: "var(--color-text-secondary,#888)", marginBottom: 6 }}>
-          Сделки: {name} — {recs.length}. Сортировка по «{key === "pct" ? "Общая" : MQ_CRITERIA[key].label}».
+          Всего {recs.length}. Сортировка по «{key === "pct" ? "Общая" : MQ_CRITERIA[key].label}» (по убыванию).
         </div>
         <div style={{ overflowX: "auto" }}>
           <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 560, background: "var(--color-background-primary,#fff)" }}>
@@ -161,7 +161,11 @@ export default function MeetingQualityTab() {
                 const oc = pastelHeat(d.overall);
                 return (
                   <tr key={idx}>
-                    <td style={{ ...tdd, maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={`${d.deal} · ${d.lvl} · ${d.seg}`}>{d.deal}</td>
+                    <td style={{ ...tdd, maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={`${d.deal} · ${d.lvl} · ${d.seg}`}>
+                      {d.url
+                        ? <a href={d.url} target="_blank" rel="noopener noreferrer" style={{ color: "#378ADD", textDecoration: "none" }}>{d.deal} ↗</a>
+                        : d.deal}
+                    </td>
                     <td style={{ ...tdd, textAlign: "center", fontWeight: 600, background: oc.bg, color: oc.fg }}>{d.overall.toFixed(0)}%</td>
                     {d.crit.map((v, i) => {
                       const { bg, fg } = pastelHeat(v);
@@ -313,31 +317,22 @@ export default function MeetingQualityTab() {
                 });
                 const oa = pastelHeat(r.pct);
                 return (
-                  <Fragment key={r.name}>
-                    <tr>
-                      <td style={{ ...td2, fontWeight: 500 }}>{r.name}</td>
-                      <td style={{ ...td2, color: TC[r.team] || "var(--color-text-secondary,#888)" }}>{r.team || "—"}</td>
-                      <td style={{ ...td2, textAlign: "center" }}>{r.n}</td>
-                      <td style={{ ...cellStyle(oa.bg, oa.fg, isOpen && openDeals.key === "pct"), fontWeight: 600 }} onClick={() => click("pct")}>
-                        {r.pct.toFixed(0)}%
-                      </td>
-                      {r.crit.map((v, i) => {
-                        const { bg, fg } = pastelHeat(v);
-                        return (
-                          <td key={i} style={cellStyle(bg, fg, isOpen && openDeals.key === i)} onClick={() => click(i)}>
-                            {v.toFixed(0)}%
-                          </td>
-                        );
-                      })}
-                    </tr>
-                    {isOpen && (
-                      <tr>
-                        <td colSpan={4 + MQ_CRITERIA.length} style={{ ...td2, background: "var(--color-background-secondary,#f5f5f5)", padding: "8px 12px" }}>
-                          {renderDeals(r.name, openDeals.key)}
+                  <tr key={r.name}>
+                    <td style={{ ...td2, fontWeight: 500 }}>{r.name}</td>
+                    <td style={{ ...td2, color: TC[r.team] || "var(--color-text-secondary,#888)" }}>{r.team || "—"}</td>
+                    <td style={{ ...td2, textAlign: "center" }}>{r.n}</td>
+                    <td style={{ ...cellStyle(oa.bg, oa.fg, isOpen && openDeals.key === "pct"), fontWeight: 600 }} onClick={() => click("pct")}>
+                      {r.pct.toFixed(0)}%
+                    </td>
+                    {r.crit.map((v, i) => {
+                      const { bg, fg } = pastelHeat(v);
+                      return (
+                        <td key={i} style={cellStyle(bg, fg, isOpen && openDeals.key === i)} onClick={() => click(i)}>
+                          {v.toFixed(0)}%
                         </td>
-                      </tr>
-                    )}
-                  </Fragment>
+                      );
+                    })}
+                  </tr>
                 );
               })}
             </tbody>
@@ -402,6 +397,38 @@ export default function MeetingQualityTab() {
           );
         })}
       </div>
+
+      {/* Попап со сделками консультанта */}
+      {openDeals && (
+        <div
+          onClick={() => setOpenDeals(null)}
+          style={{
+            position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)",
+            display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "var(--color-background-primary,#fff)", borderRadius: 12,
+              padding: "1rem 1.25rem", maxWidth: 860, width: "100%", maxHeight: "85vh",
+              overflow: "auto", boxShadow: "0 8px 40px rgba(0,0,0,0.25)",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <div style={{ fontSize: 15, fontWeight: 600 }}>Сделки: {openDeals.name}</div>
+              <button
+                onClick={() => setOpenDeals(null)}
+                style={{ border: "none", background: "transparent", fontSize: 22, lineHeight: 1, cursor: "pointer", color: "var(--color-text-secondary,#888)" }}
+                aria-label="Закрыть"
+              >
+                ×
+              </button>
+            </div>
+            {renderDeals(openDeals.name, openDeals.key)}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
