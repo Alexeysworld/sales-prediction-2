@@ -63,6 +63,7 @@ export default function MeetingQualityTab() {
   const [selLevels, setSelLevels] = useState(ALL_LEVELS); // мультиселект уровней
   const [selSegs, setSelSegs] = useState(ALL_SEGS); // мультиселект сегментов
   const [openDeals, setOpenDeals] = useState(null); // { name, key } — раскрытый список сделок
+  const [selCons, setSelCons] = useState(null); // выбранный консультант для графика
 
   const agg = aggMode === "median" ? median : mean;
 
@@ -76,11 +77,15 @@ export default function MeetingQualityTab() {
   const critPct = MQ_CRITERIA.map((c, i) => agg(data.map((r) => r.s[i])) / c.max * 100);
   const overallPct = agg(data.map((r) => recPct(r.s)));
 
-  // помесячно
-  const monthOverall = months.map((m) => agg(data.filter((r) => monthOf(r.d) === m).map((r) => recPct(r.s))));
+  // помесячно (график): по выбранному консультанту, иначе по всем; пустые месяцы -> null (разрыв)
+  const chartData = selCons ? data.filter((r) => r.c === selCons) : data;
+  const monthOverall = months.map((m) => {
+    const recs = chartData.filter((r) => monthOf(r.d) === m);
+    return recs.length ? agg(recs.map((r) => recPct(r.s))) : null;
+  });
   const monthCrit = MQ_CRITERIA.map((c, i) =>
     months.map((m) => {
-      const recs = data.filter((r) => monthOf(r.d) === m);
+      const recs = chartData.filter((r) => monthOf(r.d) === m);
       return recs.length ? agg(recs.map((r) => r.s[i])) / c.max * 100 : null;
     })
   );
@@ -236,9 +241,22 @@ export default function MeetingQualityTab() {
 
       {/* Динамика */}
       <div style={card}>
-        <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+        <div style={{ display: "flex", gap: 6, marginBottom: 12, alignItems: "center", flexWrap: "wrap" }}>
           <button style={pill(mode === "overall")} onClick={() => setMode("overall")}>Общая оценка</button>
           <button style={pill(mode === "criteria")} onClick={() => setMode("criteria")}>По критериям</button>
+          <span style={{ flex: 1 }} />
+          <span style={{ fontSize: 12, color: "var(--color-text-secondary,#888)" }}>Динамика:</span>
+          {selCons ? (
+            <button
+              style={{ ...pill(true), display: "flex", alignItems: "center", gap: 6 }}
+              onClick={() => setSelCons(null)}
+              title="Показать всех"
+            >
+              {selCons} ✕
+            </button>
+          ) : (
+            <span style={{ fontSize: 12, fontWeight: 500 }}>все консультанты</span>
+          )}
         </div>
         <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: "visible" }}>
           {yTicks.map((v) => (
@@ -253,14 +271,16 @@ export default function MeetingQualityTab() {
           {mode === "overall" ? (
             <g>
               <path d={linePath(monthOverall)} fill="none" stroke="var(--color-text-primary,#333)" strokeWidth={2.5} />
-              {monthOverall.map((v, i) => (
-                <g key={i}>
-                  <text x={x(i)} y={y(v) - 8} textAnchor="middle" fontSize={9} fill="var(--color-text-primary,#333)">{v.toFixed(0)}%</text>
-                  <circle cx={x(i)} cy={y(v)} r={3.5} fill="var(--color-text-primary,#333)" stroke="#fff" strokeWidth={1}>
-                    <title>{`${fmL(months[i])}: ${v.toFixed(1)}%`}</title>
-                  </circle>
-                </g>
-              ))}
+              {monthOverall.map((v, i) =>
+                v == null ? null : (
+                  <g key={i}>
+                    <text x={x(i)} y={y(v) - 8} textAnchor="middle" fontSize={9} fill="var(--color-text-primary,#333)">{v.toFixed(0)}%</text>
+                    <circle cx={x(i)} cy={y(v)} r={3.5} fill="var(--color-text-primary,#333)" stroke="#fff" strokeWidth={1}>
+                      <title>{`${fmL(months[i])}: ${v.toFixed(1)}%`}</title>
+                    </circle>
+                  </g>
+                )
+              )}
             </g>
           ) : (
             MQ_CRITERIA.map((c, ci) => (
@@ -316,10 +336,17 @@ export default function MeetingQualityTab() {
                   outline: active ? "2px solid var(--color-text-primary,#333)" : "none", outlineOffset: "-2px",
                 });
                 const oa = pastelHeat(r.pct);
+                const selected = selCons === r.name;
                 return (
-                  <tr key={r.name}>
-                    <td style={{ ...td2, fontWeight: 500 }}>{r.name}</td>
-                    <td style={{ ...td2, color: TC[r.team] || "var(--color-text-secondary,#888)" }}>{r.team || "—"}</td>
+                  <tr key={r.name} style={selected ? { background: "#eef4ff" } : undefined}>
+                    <td
+                      style={{ ...td2, fontWeight: selected ? 700 : 500, cursor: "pointer", background: selected ? "#eef4ff" : undefined }}
+                      onClick={() => setSelCons(selected ? null : r.name)}
+                      title="Показать динамику на графике"
+                    >
+                      {selected ? "▸ " : ""}{r.name}
+                    </td>
+                    <td style={{ ...td2, color: TC[r.team] || "var(--color-text-secondary,#888)", background: selected ? "#eef4ff" : undefined }}>{r.team || "—"}</td>
                     <td style={{ ...td2, textAlign: "center" }}>{r.n}</td>
                     <td style={{ ...cellStyle(oa.bg, oa.fg, isOpen && openDeals.key === "pct"), fontWeight: 600 }} onClick={() => click("pct")}>
                       {r.pct.toFixed(0)}%
