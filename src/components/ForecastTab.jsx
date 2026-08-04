@@ -7,7 +7,6 @@ import {
   FORECAST_START,
   FORECAST_LEN,
   MNS,
-  C_POS,
   C_NEG,
   C_WARN,
 } from "../constants.js";
@@ -29,18 +28,9 @@ const SCENARIOS = [
     name: "Реалистичный",
     color: C_WARN,
     hotConv: 19,
-    coldConv: 8,
+    coldConv: 6.5,
     hotMeet: 36,
     coldMeet: 140,
-  },
-  {
-    id: "opt",
-    name: "Оптимистичный",
-    color: C_POS,
-    hotConv: 22,
-    coldConv: 8.5,
-    hotMeet: 47,
-    coldMeet: 165,
   },
 ];
 
