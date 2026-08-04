@@ -13,7 +13,6 @@ import ForecastTab from "./components/ForecastTab.jsx";
 // Подвкладки аналитики
 const SUB_TABS = [
   { id: "dynamics", label: "Общая динамика" },
-  { id: "teams", label: "CR в продажу по командам" },
   { id: "people", label: "CR в продажу по людям" },
   { id: "rating", label: "Рейтинг людей по конверсиям" },
   { id: "quality", label: "Качество первой встречи" },
@@ -27,7 +26,7 @@ const FILTERS = [
 ];
 
 // Подвкладки, к которым применим фильтр Все/Горячие/Холодные (продажи из встреч)
-const CONV_TABS = ["dynamics", "teams", "people", "rating"];
+const CONV_TABS = ["dynamics", "people", "rating"];
 
 export default function App() {
   const [topTab, setTopTab] = useState("analytics"); // analytics | forecast
@@ -124,8 +123,12 @@ export default function App() {
       {topTab === "analytics" && (
         <>
           {CONV_TABS.includes(subTab) && subTab !== "rating" && <KPIs data={D} filter={filter} />}
-          {subTab === "dynamics" && <ConvChart data={D} filter={filter} />}
-          {subTab === "teams" && <StatsTable data={D} filter={filter} mode="teams" />}
+          {subTab === "dynamics" && (
+            <>
+              <ConvChart data={D} filter={filter} />
+              <StatsTable data={D} filter={filter} mode="teams" title="CR в продажу по командам" />
+            </>
+          )}
           {subTab === "people" && <StatsTable data={D} filter={filter} mode="consultants" />}
           {subTab === "rating" && <PConvTable data={D} filter={filter} />}
           {subTab === "quality" && <MeetingQualityTab />}

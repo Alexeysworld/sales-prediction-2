@@ -10,8 +10,8 @@ import {
   monthsInQuarter,
 } from "../utils/dateUtils.js";
 
-// mode: "teams" | "consultants"
-export default function StatsTable({ data, filter, mode }) {
+// mode: "teams" | "consultants"; title — заголовок карточки (необязательный)
+export default function StatsTable({ data, filter, mode, title }) {
   const [byQuarter, setByQuarter] = useState(false);
   const [sort, setSort] = useState({ key: null, dir: "desc" });
 
@@ -182,6 +182,11 @@ export default function StatsTable({ data, filter, mode }) {
 
   return (
     <div style={card}>
+      {title && (
+        <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-0.01em", marginBottom: 12 }}>
+          {title}
+        </div>
+      )}
       <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
         <button style={pill(!byQuarter)} onClick={() => setByQuarter(false)}>
           Месяцы
