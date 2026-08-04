@@ -23,8 +23,11 @@ function agg(data, periodKeys, filter, isQuarter) {
   });
 }
 
-export default function ConvChart({ data, filter }) {
-  const [byQuarter, setByQuarter] = useState(false);
+// byQuarter — если передан, разрез управляется извне (общий контрол с таблицей)
+export default function ConvChart({ data, filter, byQuarter: byQuarterProp }) {
+  const [innerQuarter, setInnerQuarter] = useState(false);
+  const controlled = byQuarterProp !== undefined;
+  const byQuarter = controlled ? byQuarterProp : innerQuarter;
   const [activeTeams, setActiveTeams] = useState({ MS1: true, MS2: true, MS3: true });
   const [hover, setHover] = useState(null); // ключ выделенной линии
 
@@ -105,14 +108,18 @@ export default function ConvChart({ data, filter }) {
           gap: 8,
         }}
       >
-        <div style={{ display: "flex", gap: 6 }}>
-          <button style={pill(!byQuarter)} onClick={() => setByQuarter(false)}>
-            Месяцы
-          </button>
-          <button style={pill(byQuarter)} onClick={() => setByQuarter(true)}>
-            Кварталы
-          </button>
-        </div>
+        {controlled ? (
+          <div style={{ fontSize: 13, fontWeight: 600 }}>Динамика конверсии</div>
+        ) : (
+          <div style={{ display: "flex", gap: 6 }}>
+            <button style={pill(!byQuarter)} onClick={() => setInnerQuarter(false)}>
+              Месяцы
+            </button>
+            <button style={pill(byQuarter)} onClick={() => setInnerQuarter(true)}>
+              Кварталы
+            </button>
+          </div>
+        )}
         <div style={{ display: "flex", gap: 6 }}>
           {TEAMS.map((t) => (
             <button

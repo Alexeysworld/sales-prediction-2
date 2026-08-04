@@ -13,7 +13,6 @@ import ForecastTab from "./components/ForecastTab.jsx";
 // Подвкладки аналитики
 const SUB_TABS = [
   { id: "dynamics", label: "Общая динамика" },
-  { id: "people", label: "CR в продажу по людям" },
   { id: "rating", label: "Рейтинг людей по конверсиям" },
   { id: "quality", label: "Качество первой встречи" },
   { id: "second", label: "CR во 2-ю встречу" },
@@ -26,12 +25,14 @@ const FILTERS = [
 ];
 
 // Подвкладки, к которым применим фильтр Все/Горячие/Холодные (продажи из встреч)
-const CONV_TABS = ["dynamics", "people", "rating"];
+const CONV_TABS = ["dynamics", "rating"];
 
 export default function App() {
   const [topTab, setTopTab] = useState("analytics"); // analytics | forecast
   const [subTab, setSubTab] = useState("dynamics");
   const [filter, setFilter] = useState("all");
+  // Разрез периодов — общий для графика и таблицы на «Общей динамике»
+  const [byQuarter, setByQuarter] = useState(false);
 
   // Фильтр виден на вкладках конверсии и в прогнозе
   const showFilter = topTab === "forecast" || CONV_TABS.includes(subTab);
@@ -125,11 +126,27 @@ export default function App() {
           {CONV_TABS.includes(subTab) && subTab !== "rating" && <KPIs data={D} filter={filter} />}
           {subTab === "dynamics" && (
             <>
-              <ConvChart data={D} filter={filter} />
-              <StatsTable data={D} filter={filter} mode="teams" title="CR в продажу по командам" />
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12 }}>
+                <span style={{ fontSize: 12, color: "var(--color-text-secondary,#757987)", marginRight: 2 }}>
+                  Разрез:
+                </span>
+                <button style={pill(!byQuarter)} onClick={() => setByQuarter(false)}>
+                  Месяцы
+                </button>
+                <button style={pill(byQuarter)} onClick={() => setByQuarter(true)}>
+                  Кварталы
+                </button>
+              </div>
+              <ConvChart data={D} filter={filter} byQuarter={byQuarter} />
+              <StatsTable
+                data={D}
+                filter={filter}
+                mode="teams"
+                title="CR в продажу по командам и людям"
+                byQuarter={byQuarter}
+              />
             </>
           )}
-          {subTab === "people" && <StatsTable data={D} filter={filter} mode="consultants" />}
           {subTab === "rating" && <PConvTable data={D} filter={filter} />}
           {subTab === "quality" && <MeetingQualityTab />}
           {subTab === "second" && <SecondMeetingTab />}
