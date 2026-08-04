@@ -1,16 +1,16 @@
 import { useState } from "react";
-import { card, th2, td2, kpiCard } from "../utils/styles.js";
+import { card, th2, td2, kpiCard, kpiLabel, kpiValue } from "../utils/styles.js";
 import { TC, C_POS } from "../constants.js";
 import { fmL } from "../utils/dateUtils.js";
 import { SECOND_MEETINGS, SM_MONTHS } from "../data/secondMeetings.js";
 
 // Heatmap для CR во вторую встречу (шкала 0–100%)
 function heatCR(cr) {
-  if (cr == null || cr === 0) return { bg: "transparent", fg: "var(--color-text-tertiary,#aaa)" };
-  if (cr < 20) return { bg: "#EAF3DE", fg: "#3B6D11" };
-  if (cr < 35) return { bg: "#C0DD97", fg: "#27500A" };
-  if (cr < 50) return { bg: "#97C459", fg: "#173404" };
-  return { bg: "#639922", fg: "#fff" };
+  if (cr == null || cr === 0) return { bg: "transparent", fg: "var(--color-text-tertiary,#9AA1AF)" };
+  if (cr < 20) return { bg: "var(--heat-1-bg,#EAF4EC)", fg: "var(--heat-1-fg,#1F5B33)" };
+  if (cr < 35) return { bg: "var(--heat-2-bg,#CBE8D5)", fg: "var(--heat-2-fg,#17512C)" };
+  if (cr < 50) return { bg: "var(--heat-3-bg,#9BD5AE)", fg: "var(--heat-3-fg,#0E3D20)" };
+  return { bg: "var(--heat-4-bg,#39AA5D)", fg: "var(--heat-4-fg,#fff)" };
 }
 
 const sum = (obj) => SM_MONTHS.reduce((a, m) => a + (obj[m] || 0), 0);
@@ -73,16 +73,16 @@ export default function SecondMeetingTab() {
       {/* KPI */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 12 }}>
         <div style={kpiCard}>
-          <div style={{ fontSize: 12, color: "var(--color-text-secondary,#888)" }}>Первичные встречи</div>
-          <div style={{ fontSize: 22, fontWeight: 500 }}>{totM1}</div>
+          <div style={kpiLabel}>Первичные встречи</div>
+          <div style={kpiValue}>{totM1}</div>
         </div>
         <div style={kpiCard}>
-          <div style={{ fontSize: 12, color: "var(--color-text-secondary,#888)" }}>Вторые встречи</div>
-          <div style={{ fontSize: 22, fontWeight: 500 }}>{totM2}</div>
+          <div style={kpiLabel}>Вторые встречи</div>
+          <div style={kpiValue}>{totM2}</div>
         </div>
         <div style={kpiCard}>
-          <div style={{ fontSize: 12, color: "var(--color-text-secondary,#888)" }}>CR во вторую встречу</div>
-          <div style={{ fontSize: 22, fontWeight: 500, color: C_POS }}>
+          <div style={kpiLabel}>CR во вторую встречу</div>
+          <div style={{ ...kpiValue, color: C_POS }}>
             {totCR == null ? "—" : `${totCR.toFixed(1)}%`}
           </div>
         </div>

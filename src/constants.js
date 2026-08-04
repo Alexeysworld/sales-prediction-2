@@ -19,23 +19,26 @@ export const MNS = [
 // Команды
 export const TEAMS = ["MS1", "MS2", "MS3"];
 
-// Цвета команд
+// Цвета команд — палитра Mindbox (--chart-2 / --chart-3 / --chart-1)
 export const TC = {
-  MS1: "#378ADD",
-  MS2: "#EF9F27",
-  MS3: "#1D9E75",
+  MS1: "#5383F4", // Mailings синий
+  MS2: "#FCA92F", // ML оранжевый
+  MS3: "#39AA5D", // Mindbox зелёный
 };
 
-// Палитра для графиков (12 цветов)
+// Палитра для графиков — --chart-1..6 Mindbox, далее производные оттенки
 export const PAL = [
-  "#378ADD", "#EF9F27", "#1D9E75", "#E24B4A", "#9B59B6", "#1ABC9C",
-  "#F39C12", "#3498DB", "#E91E63", "#00BCD4", "#8BC34A", "#FF5722",
+  "#39AA5D", "#5383F4", "#FCA92F", "#FA4C49", "#D76BFE", "#14B8A6",
+  "#2E7D46", "#3B62C4", "#C77F16", "#B93734", "#9E4CBC", "#0E8578",
 ];
 
 // Цвета состояний
-export const C_POS = "#1D9E75"; // рост / позитив
-export const C_NEG = "#E24B4A"; // падение / негатив
-export const C_WARN = "#EF9F27"; // предупреждение
+export const C_POS = "#39AA5D"; // рост / позитив (--accent, --chart-1)
+export const C_NEG = "#FA4C49"; // падение / негатив (--destructive, --chart-4)
+export const C_WARN = "#FCA92F"; // предупреждение (--chart-3)
+
+// Акцент навигации (активный таб)
+export const C_ACCENT = "#39AA5D";
 
 // Дефолтное распределение цикла сделки (лаги +0..+8 мес)
 export const DEF_DH = [14.3, 32.7, 12.2, 18.4, 10.2, 2.0, 8.2, 2.0, 0.0]; // горячие

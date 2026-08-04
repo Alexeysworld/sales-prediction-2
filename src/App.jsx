@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { pill, subT } from "./utils/styles.js";
+import { C_ACCENT } from "./constants.js";
 import { D } from "./data/consultants.js";
 import KPIs from "./components/KPIs.jsx";
 import ConvChart from "./components/ConvChart.jsx";
@@ -42,22 +43,22 @@ export default function App() {
     cursor: "pointer",
     background: "transparent",
     border: "none",
-    fontWeight: active ? 500 : 400,
-    color: active ? "#378ADD" : "var(--color-text-secondary,#888)",
-    borderBottom: active ? "2px solid #378ADD" : "2px solid transparent",
+    fontWeight: active ? 600 : 400,
+    color: active ? "var(--color-text-primary,#292B32)" : "var(--color-text-secondary,#757987)",
+    borderBottom: active ? `2px solid ${C_ACCENT}` : "2px solid transparent",
   });
 
   return (
     <div
       style={{
-        fontFamily: "system-ui, -apple-system, sans-serif",
-        maxWidth: 960,
+        fontFamily: "var(--font-sans, system-ui, sans-serif)",
+        maxWidth: 1120,
         margin: "0 auto",
         padding: "1.5rem 1rem 4rem",
-        color: "var(--color-text-primary,#333)",
+        color: "var(--color-text-primary,#292B32)",
       }}
     >
-      <h1 style={{ fontSize: 20, fontWeight: 600, marginBottom: 16 }}>
+      <h1 style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-0.02em", margin: "0 0 18px" }}>
         Дашборд команды продаж
       </h1>
 
@@ -68,7 +69,7 @@ export default function App() {
           justifyContent: "space-between",
           alignItems: "center",
           gap: 16,
-          borderBottom: "0.5px solid var(--color-border-tertiary,#e0e0e0)",
+          borderBottom: "1px solid var(--color-border-tertiary,#DFE3E8)",
           marginBottom: 16,
         }}
       >

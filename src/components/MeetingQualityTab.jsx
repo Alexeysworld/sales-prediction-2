@@ -5,11 +5,16 @@ import { fmL } from "../utils/dateUtils.js";
 import { MEETING_QUALITY, MQ_CRITERIA, MQ_MAX } from "../data/meetingQuality.js";
 import { MQ_PATTERNS, MQ_BENCHMARKS } from "../data/meetingPatterns.js";
 
-// Пастельная тепловая карта: красный (0%) → жёлтый (50%) → зелёный (100%)
+// Пастельная тепловая карта: красный → зелёный в бренд-оттенках.
+// Границы шкалы и светлота живут в токенах темы (--ramp-*), поэтому цвет
+// автоматически подстраивается под светлую/тёмную тему.
 function pastelHeat(pct) {
-  if (pct == null) return { bg: "transparent", fg: "var(--color-text-tertiary,#aaa)" };
-  const h = Math.max(0, Math.min(120, (pct / 100) * 120)); // 0=красный, 120=зелёный
-  return { bg: `hsl(${h.toFixed(0)}, 62%, 80%)`, fg: "#33402e" };
+  if (pct == null) return { bg: "transparent", fg: "var(--color-text-tertiary,#9AA1AF)" };
+  const p = Math.max(0, Math.min(100, pct));
+  return {
+    bg: `hsl(calc(var(--ramp-h0, 4) + (var(--ramp-h1, 140) - var(--ramp-h0, 4)) * ${p} / 100) var(--ramp-s, 55%) var(--ramp-l, 86%))`,
+    fg: "var(--ramp-fg, #243027)",
+  };
 }
 
 const mean = (arr) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0);
@@ -35,10 +40,10 @@ const ALL_SEGS = [...new Set(MEETING_QUALITY.map((r) => r.seg))].sort(
 const selStyle = {
   padding: "4px 8px",
   fontSize: 12,
-  border: "0.5px solid var(--color-border-tertiary,#ddd)",
+  border: "1px solid var(--color-border-tertiary,#DFE3E8)",
   borderRadius: 6,
   background: "var(--color-background-primary,#fff)",
-  color: "var(--color-text-primary,#333)",
+  color: "var(--color-text-primary,#292B32)",
   cursor: "pointer",
 };
 
@@ -48,9 +53,10 @@ const chip = (active) => ({
   fontSize: 11,
   borderRadius: 12,
   cursor: "pointer",
-  border: `0.5px solid ${active ? "transparent" : "var(--color-border-tertiary,#ddd)"}`,
-  background: active ? "var(--color-text-primary,#333)" : "transparent",
-  color: active ? "#fff" : "var(--color-text-secondary,#888)",
+  border: `1px solid ${active ? "var(--chip-on-border,#9BD5AE)" : "var(--color-border-tertiary,#DFE3E8)"}`,
+  background: active ? "var(--chip-on-bg,#E6F4EA)" : "transparent",
+  color: active ? "var(--chip-on-fg,#1F5B33)" : "var(--color-text-secondary,#757987)",
+  fontWeight: active ? 600 : 400,
 });
 
 export default function MeetingQualityTab() {
@@ -144,7 +150,7 @@ export default function MeetingQualityTab() {
     recs.sort((a, b) => val(b) - val(a));
     const thd = { ...th2, padding: "4px 6px", whiteSpace: "nowrap" };
     const tdd = { ...td2, padding: "4px 6px" };
-    const hl = "#e3ecf7";
+    const hl = "var(--row-selected,#EAF1FE)";
     return (
       <div>
         <div style={{ fontSize: 11, color: "var(--color-text-secondary,#888)", marginBottom: 6 }}>
@@ -168,7 +174,7 @@ export default function MeetingQualityTab() {
                   <tr key={idx}>
                     <td style={{ ...tdd, maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={`${d.deal} · ${d.lvl} · ${d.seg}`}>
                       {d.url
-                        ? <a href={d.url} target="_blank" rel="noopener noreferrer" style={{ color: "#378ADD", textDecoration: "none" }}>{d.deal} ↗</a>
+                        ? <a href={d.url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--chart-2,#5383F4)", textDecoration: "none" }}>{d.deal} ↗</a>
                         : d.deal}
                     </td>
                     <td style={{ ...tdd, textAlign: "center", fontWeight: 600, background: oc.bg, color: oc.fg }}>{d.overall.toFixed(0)}%</td>
@@ -333,20 +339,20 @@ export default function MeetingQualityTab() {
                   setOpenDeals(isOpen && openDeals.key === key ? null : { name: r.name, key });
                 const cellStyle = (bg, fg, active) => ({
                   ...td2, textAlign: "center", background: bg, color: fg, cursor: "pointer",
-                  outline: active ? "2px solid var(--color-text-primary,#333)" : "none", outlineOffset: "-2px",
+                  outline: active ? "2px solid var(--color-text-primary,#292B32)" : "none", outlineOffset: "-2px",
                 });
                 const oa = pastelHeat(r.pct);
                 const selected = selCons === r.name;
                 return (
-                  <tr key={r.name} style={selected ? { background: "#eef4ff" } : undefined}>
+                  <tr key={r.name} style={selected ? { background: "var(--row-selected,#EAF1FE)" } : undefined}>
                     <td
-                      style={{ ...td2, fontWeight: selected ? 700 : 500, cursor: "pointer", background: selected ? "#eef4ff" : undefined }}
+                      style={{ ...td2, fontWeight: selected ? 700 : 500, cursor: "pointer", background: selected ? "var(--row-selected,#EAF1FE)" : undefined }}
                       onClick={() => setSelCons(selected ? null : r.name)}
                       title="Показать динамику на графике"
                     >
                       {selected ? "▸ " : ""}{r.name}
                     </td>
-                    <td style={{ ...td2, color: TC[r.team] || "var(--color-text-secondary,#888)", background: selected ? "#eef4ff" : undefined }}>{r.team || "—"}</td>
+                    <td style={{ ...td2, color: TC[r.team] || "var(--color-text-secondary,#888)", background: selected ? "var(--row-selected,#EAF1FE)" : undefined }}>{r.team || "—"}</td>
                     <td style={{ ...td2, textAlign: "center" }}>{r.n}</td>
                     <td style={{ ...cellStyle(oa.bg, oa.fg, isOpen && openDeals.key === "pct"), fontWeight: 600 }} onClick={() => click("pct")}>
                       {r.pct.toFixed(0)}%

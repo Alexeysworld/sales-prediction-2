@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { card, th2, td2, heatColors, kpiCard } from "../utils/styles.js";
+import { card, th2, td2, heatColors, kpiCard, kpiLabel, kpiValue } from "../utils/styles.js";
 import { TC, C_POS, C_NEG } from "../constants.js";
 import { gM, gS, cv } from "../utils/convUtils.js";
 import { actMo, fmL, addMo } from "../utils/dateUtils.js";
@@ -109,10 +109,10 @@ export default function PConvTable({ data, filter = "all" }) {
   const selStyle = {
     padding: "4px 8px",
     fontSize: 12,
-    border: "0.5px solid var(--color-border-tertiary,#ddd)",
+    border: "1px solid var(--color-border-tertiary,#DFE3E8)",
     borderRadius: 6,
     background: "var(--color-background-primary,#fff)",
-    color: "var(--color-text-primary,#333)",
+    color: "var(--color-text-primary,#292B32)",
     cursor: "pointer",
   };
 
@@ -150,8 +150,8 @@ export default function PConvTable({ data, filter = "all" }) {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 12 }}>
         {kpis.map((it) => (
           <div key={it.label} style={kpiCard}>
-            <div style={{ fontSize: 12, color: "var(--color-text-secondary,#888)" }}>{it.label}</div>
-            <div style={{ fontSize: 22, fontWeight: 500, color: it.color || "var(--color-text-primary,#333)" }}>
+            <div style={kpiLabel}>{it.label}</div>
+            <div style={{ ...kpiValue, color: it.color || "var(--color-text-primary,#292B32)" }}>
               {it.value}
             </div>
             {it.subtitle && (

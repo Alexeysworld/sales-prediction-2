@@ -7,6 +7,9 @@ import {
   FORECAST_START,
   FORECAST_LEN,
   MNS,
+  C_POS,
+  C_NEG,
+  C_WARN,
 } from "../constants.js";
 import { HIST_HOT, HIST_COLD } from "../data/meetings.js";
 import { addMo, moN, fmL, fmQ, quarterOf, quartersOf, monthsInQuarter } from "../utils/dateUtils.js";
@@ -15,7 +18,7 @@ const SCENARIOS = [
   {
     id: "pess",
     name: "Пессимистичный",
-    color: "#E24B4A",
+    color: C_NEG,
     hotConv: 14,
     coldConv: 5.3,
     hotMeet: 40,
@@ -24,7 +27,7 @@ const SCENARIOS = [
   {
     id: "real",
     name: "Реалистичный",
-    color: "#EF9F27",
+    color: C_WARN,
     hotConv: 19,
     coldConv: 8,
     hotMeet: 36,
@@ -33,7 +36,7 @@ const SCENARIOS = [
   {
     id: "opt",
     name: "Оптимистичный",
-    color: "#1D9E75",
+    color: C_POS,
     hotConv: 22,
     coldConv: 8.5,
     hotMeet: 47,
@@ -160,10 +163,10 @@ export default function ForecastTab({ filter }) {
                 outline: isActive ? `2px solid ${s.color}` : "none",
               }}
             >
-              <div style={{ fontSize: 13, fontWeight: 500, color: s.color }}>
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: s.color }}>
                 {s.name}
               </div>
-              <div style={{ fontSize: 20, fontWeight: 500 }}>
+              <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums" }}>
                 {scenarioTotals[s.id].toFixed(0)}
               </div>
               <div style={{ fontSize: 10, color: "var(--color-text-secondary,#888)" }}>
@@ -184,7 +187,7 @@ export default function ForecastTab({ filter }) {
                 {fMonths.map((m) => {
                   const seas = p.season[moN(m) - 1];
                   return (
-                    <th key={m} style={{ ...th2, background: "#fffbe6", textAlign: "center" }}>
+                    <th key={m} style={{ ...th2, background: "var(--forecast-month,#FFF6E7)", textAlign: "center" }}>
                       {fmL(m)}
                       {seas !== 1 && (
                         <div style={{ fontSize: 10, color: "var(--color-text-tertiary,#aaa)" }}>
@@ -195,7 +198,7 @@ export default function ForecastTab({ filter }) {
                   );
                 })}
                 {quarters.map((q) => (
-                  <th key={q} style={{ ...th2, background: "#f0f7ff", textAlign: "center" }}>
+                  <th key={q} style={{ ...th2, background: "var(--forecast-quarter,#EEF3FE)", textAlign: "center" }}>
                     {fmQ(q)}
                   </th>
                 ))}
@@ -214,12 +217,12 @@ export default function ForecastTab({ filter }) {
               <tr>
                 <td style={{ ...td2, fontWeight: 500 }}>Продажи</td>
                 {fMonths.map((m) => (
-                  <td key={m} style={{ ...td2, background: "#fffbe6", textAlign: "center" }}>
+                  <td key={m} style={{ ...td2, background: "var(--forecast-month,#FFF6E7)", textAlign: "center" }}>
                     {sales[m].toFixed(1)}
                   </td>
                 ))}
                 {quarters.map((q) => (
-                  <td key={q} style={{ ...td2, background: "#f0f7ff", textAlign: "center", fontWeight: 500 }}>
+                  <td key={q} style={{ ...td2, background: "var(--forecast-quarter,#EEF3FE)", textAlign: "center", fontWeight: 500 }}>
                     {qSum[q].toFixed(1)}
                   </td>
                 ))}

@@ -1,0 +1,228 @@
+/* ────────────────────────────────────────────────────────────────────────────
+   Тема дашборда — палитра Mindbox (общая с рабочим пространством CSM).
+   Источник токенов: csm-project-goals/src/app/globals.css
+   Шрифт подключён локально (public/fonts), без внешних CDN.
+   ──────────────────────────────────────────────────────────────────────────── */
+
+@font-face {
+  font-family: 'Nunito Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/nunito-sans-cyrillic-400.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Nunito Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/nunito-sans-latin-400.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Nunito Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/nunito-sans-cyrillic-500.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Nunito Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/nunito-sans-latin-500.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Nunito Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/nunito-sans-cyrillic-600.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Nunito Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/nunito-sans-latin-600.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Nunito Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/nunito-sans-cyrillic-700.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Nunito Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/nunito-sans-latin-700.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+:root {
+  /* ——— токены Mindbox (как в globals.css) ——— */
+  --background: #F0F3F6;
+  --foreground: #292B32;
+  --card: #FFFFFF;
+  --card-foreground: #292B32;
+  --muted: #E8EBEE;
+  --muted-foreground: #757987;
+  --accent: #39AA5D;
+  --destructive: #FA4C49;
+  --border: #DFE3E8;
+  --input: #DFE3E8;
+  --ring: #39AA5D;
+  --chart-1: #39AA5D;
+  --chart-2: #5383F4;
+  --chart-3: #FCA92F;
+  --chart-4: #FA4C49;
+  --chart-5: #D76BFE;
+  --chart-6: #14B8A6;
+  --radius: 0.5rem;
+  --font-sans: 'Nunito Sans', system-ui, -apple-system, sans-serif;
+
+  /* ——— семантика дашборда (маппинг на токены выше) ——— */
+  --color-background-page: var(--background);
+  --color-background-primary: var(--card);
+  --color-background-secondary: var(--muted);
+  --color-text-primary: var(--foreground);
+  --color-text-secondary: var(--muted-foreground);
+  --color-text-tertiary: #9AA1AF;
+  --color-border-tertiary: var(--border);
+  --color-border-secondary: #C6CCD4;
+
+  /* тепловая карта конверсии (ступенчатая, бренд-зелёный) */
+  --heat-1-bg: #EAF4EC; --heat-1-fg: #1F5B33;
+  --heat-2-bg: #CBE8D5; --heat-2-fg: #17512C;
+  --heat-3-bg: #9BD5AE; --heat-3-fg: #0E3D20;
+  --heat-4-bg: #39AA5D; --heat-4-fg: #FFFFFF;
+
+  /* пастельная шкала оценок качества: красный → зелёный */
+  --ramp-h0: 4; --ramp-h1: 140; --ramp-s: 55%; --ramp-l: 86%; --ramp-fg: #243027;
+
+  /* подложки прогноза */
+  --forecast-month: #FFF6E7;
+  --forecast-quarter: #EEF3FE;
+
+  /* выделенная строка (выбранный консультант) */
+  --row-selected: #EAF1FE;
+
+  /* включённый чип фильтра */
+  --chip-on-bg: #E6F4EA; --chip-on-fg: #1F5B33; --chip-on-border: #9BD5AE;
+
+  --card-shadow: 0 1px 2px rgba(41, 43, 50, 0.04);
+  --chart-area: rgba(57, 170, 93, 0.10);
+}
+
+/* Тёмная тема: следует системной, класс .dark на <html> переопределяет вручную */
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    --background: #0C0D10;
+    --foreground: #F0F3F6;
+    --card: #1B1C20;
+    --card-foreground: #F0F3F6;
+    --muted: #1B1C20;
+    --muted-foreground: #8C9AAC;
+    --accent: #56D67F;
+    --border: #2A2B32;
+    --input: #2A2B32;
+    --ring: #56D67F;
+    --chart-1: #56D67F;
+    --chart-6: #2DD4BF;
+
+    --color-background-secondary: #23252B;
+    --color-text-tertiary: #6B7787;
+    --color-border-secondary: #3A3C45;
+
+    --heat-1-bg: #17251B; --heat-1-fg: #8FD3A6;
+    --heat-2-bg: #1D3A28; --heat-2-fg: #A8E0BC;
+    --heat-3-bg: #245C39; --heat-3-fg: #D8F3E1;
+    --heat-4-bg: #39AA5D; --heat-4-fg: #0C0D10;
+
+    --ramp-s: 42%; --ramp-l: 26%; --ramp-fg: #E8F0EA;
+
+    --forecast-month: #241F14;
+    --forecast-quarter: #141A28;
+    --row-selected: #1B2333;
+    --chip-on-bg: #17251B; --chip-on-fg: #8FD3A6; --chip-on-border: #245C39;
+
+    --card-shadow: none;
+    --chart-area: rgba(86, 214, 127, 0.10);
+  }
+}
+
+.dark {
+  --background: #0C0D10;
+  --foreground: #F0F3F6;
+  --card: #1B1C20;
+  --card-foreground: #F0F3F6;
+  --muted: #1B1C20;
+  --muted-foreground: #8C9AAC;
+  --accent: #56D67F;
+  --border: #2A2B32;
+  --input: #2A2B32;
+  --ring: #56D67F;
+  --chart-1: #56D67F;
+  --chart-6: #2DD4BF;
+
+  --color-background-secondary: #23252B;
+  --color-text-tertiary: #6B7787;
+  --color-border-secondary: #3A3C45;
+
+  --heat-1-bg: #17251B; --heat-1-fg: #8FD3A6;
+  --heat-2-bg: #1D3A28; --heat-2-fg: #A8E0BC;
+  --heat-3-bg: #245C39; --heat-3-fg: #D8F3E1;
+  --heat-4-bg: #39AA5D; --heat-4-fg: #0C0D10;
+
+  --ramp-s: 42%; --ramp-l: 26%; --ramp-fg: #E8F0EA;
+
+  --forecast-month: #241F14;
+  --forecast-quarter: #141A28;
+  --row-selected: #1B2333;
+  --chip-on-bg: #17251B; --chip-on-fg: #8FD3A6; --chip-on-border: #245C39;
+
+  --card-shadow: none;
+  --chart-area: rgba(86, 214, 127, 0.10);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--color-background-page);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Числа в таблицах и KPI выравниваются по разрядам */
+table, .tabular { font-variant-numeric: tabular-nums; }
+
+/* Пастельная шкала оценок: значение процента передаётся через --p */
+.ramp-cell {
+  background: hsl(calc(var(--ramp-h0) + (var(--ramp-h1) - var(--ramp-h0)) * var(--p) / 100)
+                  var(--ramp-s) var(--ramp-l));
+  color: var(--ramp-fg);
+}
+
+button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}

@@ -72,6 +72,23 @@ export default function ConvChart({ data, filter }) {
     return pts.length ? "M" + pts.join("L") : "";
   }
 
+  // Последние периоды не дозрели: сделки ещё закрываются, конверсия занижена.
+  // В месяцах это 3 месяца, в кварталах — 1 квартал.
+  const rawTail = byQuarter ? 1 : 3;
+  const tail = Math.min(rawTail, Math.max(0, periods.length - 1));
+  const mature = periods.length - tail;
+  const immature = (i) => i >= mature;
+
+  // Заливка под линией «Всего» — только по дозревшей части
+  function areaPath(series) {
+    const pts = series
+      .slice(0, mature)
+      .map((p, i) => (p.conv == null ? null : `${x(i)},${y(p.conv)}`))
+      .filter(Boolean);
+    if (pts.length < 2) return "";
+    return `M${pts[0]}L${pts.join("L")}L${x(mature - 1)},${y(0)}L${x(0)},${y(0)}Z`;
+  }
+
   const lineOpacity = (key) => (hover && hover !== key ? 0.12 : 1);
 
   const emptyData = periods.length === 0;
@@ -103,7 +120,7 @@ export default function ConvChart({ data, filter }) {
               style={{
                 ...pill(activeTeams[t]),
                 ...(activeTeams[t]
-                  ? { background: TC[t], color: "#fff" }
+                  ? { background: TC[t], color: "#fff", borderColor: TC[t], fontWeight: 600 }
                   : { color: TC[t], borderColor: TC[t] }),
               }}
               onClick={() =>
@@ -141,7 +158,7 @@ export default function ConvChart({ data, filter }) {
                 x2={W - padR}
                 y1={y(v)}
                 y2={y(v)}
-                stroke="var(--color-border-tertiary,#e0e0e0)"
+                stroke="var(--color-border-tertiary,#DFE3E8)"
                 strokeDasharray="4,4"
                 strokeWidth={0.5}
               />
@@ -150,7 +167,7 @@ export default function ConvChart({ data, filter }) {
                 y={y(v) + 3}
                 textAnchor="end"
                 fontSize={9}
-                fill="var(--color-text-tertiary,#aaa)"
+                fill="var(--color-text-tertiary,#9AA1AF)"
               >
                 {v}%
               </text>
@@ -165,11 +182,39 @@ export default function ConvChart({ data, filter }) {
               y={H - padB + 16}
               textAnchor="middle"
               fontSize={9}
-              fill="var(--color-text-secondary,#888)"
+              fill="var(--color-text-secondary,#757987)"
+              opacity={immature(i) ? 0.45 : 1}
             >
               {byQuarter ? fmQ(p) : fmL(p)}
             </text>
           ))}
+
+          {/* Затенение недозревших периодов */}
+          {tail > 0 && periods.length > 1 && (
+            <rect
+              x={x(mature) - (x(1) - x(0)) / 2}
+              y={padT}
+              width={W - padR - (x(mature) - (x(1) - x(0)) / 2)}
+              height={innerH}
+              fill="var(--color-background-secondary,#E8EBEE)"
+              opacity={0.55}
+            />
+          )}
+          {tail > 0 && (
+            <text
+              x={W - padR}
+              y={padT - 6}
+              textAnchor="end"
+              fontSize={9}
+              fill="var(--color-text-secondary,#757987)"
+              opacity={0.75}
+            >
+              сделки не дозрели →
+            </text>
+          )}
+
+          {/* Заливка под линией «Всего» */}
+          <path d={areaPath(totalSeries)} fill="var(--chart-area,rgba(57,170,93,.10))" stroke="none" />
 
           {/* Линии команд (пунктир) */}
           {TEAMS.filter((t) => activeTeams[t]).map((t) => (
@@ -196,28 +241,29 @@ export default function ConvChart({ data, filter }) {
             <path
               d={linePath(totalSeries)}
               fill="none"
-              stroke="var(--color-text-primary,#333)"
-              strokeWidth={2.5}
+              stroke="var(--color-text-primary,#292B32)"
+              strokeWidth={2.4}
             />
             {totalSeries.map((p, i) =>
               p.conv == null ? null : (
-                <g key={i}>
+                <g key={i} opacity={immature(i) ? 0.45 : 1}>
                   <text
                     x={x(i)}
                     y={y(p.conv) - 8}
                     textAnchor="middle"
                     fontSize={9}
-                    fill="var(--color-text-primary,#333)"
+                    fontWeight={600}
+                    fill="var(--color-text-primary,#292B32)"
                   >
                     {p.conv.toFixed(1)}%
                   </text>
                   <circle
                     cx={x(i)}
                     cy={y(p.conv)}
-                    r={3.5}
-                    fill="var(--color-text-primary,#333)"
-                    stroke="#fff"
-                    strokeWidth={1}
+                    r={i === mature - 1 ? 4.5 : 3.5}
+                    fill={i === mature - 1 ? "var(--accent,#39AA5D)" : "var(--color-text-primary,#292B32)"}
+                    stroke="var(--color-background-primary,#fff)"
+                    strokeWidth={i === mature - 1 ? 2 : 1}
                   >
                     <title>{`Всего: ${p.meetings} встр → ${p.sales} прод (${p.conv.toFixed(1)}%)`}</title>
                   </circle>
@@ -243,7 +289,7 @@ export default function ConvChart({ data, filter }) {
           onMouseLeave={() => setHover(null)}
           style={{ display: "flex", alignItems: "center", gap: 5, cursor: "default" }}
         >
-          <span style={{ width: 16, height: 2.5, background: "var(--color-text-primary,#333)" }} />
+          <span style={{ width: 16, height: 3, borderRadius: 2, background: "var(--color-text-primary,#292B32)" }} />
           Всего
         </span>
         {TEAMS.filter((t) => activeTeams[t]).map((t) => (

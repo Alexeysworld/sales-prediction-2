@@ -1,4 +1,4 @@
-import { kpiCard } from "../utils/styles.js";
+import { kpiCard, kpiLabel, kpiValue } from "../utils/styles.js";
 import { C_POS, C_NEG } from "../constants.js";
 import { gM, gS, cv } from "../utils/convUtils.js";
 import { actMo } from "../utils/dateUtils.js";
@@ -68,20 +68,17 @@ export default function KPIs({ data, filter }) {
     >
       {items.map((it) => (
         <div key={it.label} style={kpiCard}>
-          <div style={{ fontSize: 12, color: "var(--color-text-secondary,#888)" }}>
-            {it.label}
-          </div>
+          <div style={kpiLabel}>{it.label}</div>
           <div
             style={{
-              fontSize: 22,
-              fontWeight: 500,
-              color: it.color || "var(--color-text-primary,#333)",
+              ...kpiValue,
+              color: it.color || "var(--color-text-primary,#292B32)",
             }}
           >
             {it.value}
           </div>
           {it.subtitle && (
-            <div style={{ fontSize: 11, color: "var(--color-text-tertiary,#aaa)" }}>
+            <div style={{ fontSize: 11.5, color: "var(--color-text-secondary,#757987)" }}>
               {it.subtitle}
             </div>
           )}
