@@ -8,7 +8,6 @@ import ConvChart from "./components/ConvChart.jsx";
 import StatsTable from "./components/StatsTable.jsx";
 import PConvTable from "./components/PConvTable.jsx";
 import MeetingQualityTab from "./components/MeetingQualityTab.jsx";
-import SecondMeetingTab from "./components/SecondMeetingTab.jsx";
 import ForecastTab from "./components/ForecastTab.jsx";
 
 // Подвкладки аналитики
@@ -16,7 +15,6 @@ const SUB_TABS = [
   { id: "dynamics", label: "Общая динамика" },
   { id: "rating", label: "Рейтинг людей по конверсиям" },
   { id: "quality", label: "Качество первой встречи" },
-  { id: "second", label: "CR во 2-ю встречу" },
 ];
 
 const FILTERS = [
@@ -215,7 +213,6 @@ export default function App() {
           )}
           {subTab === "rating" && <PConvTable data={D} filter={filter} />}
           {subTab === "quality" && <MeetingQualityTab />}
-          {subTab === "second" && <SecondMeetingTab />}
         </>
       )}
 
