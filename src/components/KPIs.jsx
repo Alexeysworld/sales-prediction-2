@@ -4,7 +4,8 @@ import { gM, gS, cv } from "../utils/convUtils.js";
 import { actMo } from "../utils/dateUtils.js";
 
 // 4 KPI-карточки: Встречи, Продажи, Конверсия, Тренд квартала
-export default function KPIs({ data, filter }) {
+// salesLabel — как называется результат (продажи / вторые встречи)
+export default function KPIs({ data, filter, salesLabel = "Продажи", tailMonths = 3 }) {
   const months = actMo(data, filter);
 
   let meetings = 0;
@@ -17,9 +18,9 @@ export default function KPIs({ data, filter }) {
   }
   const conv = cv(meetings, sales);
 
-  // Тренд квартала: исключаем последние 3 месяца (сделки не дозрели),
-  // из оставшихся берём последние 3 vs предыдущие 3.
-  const trendMonths = months.slice(0, Math.max(0, months.length - 3));
+  // Тренд квартала: исключаем недозревшие месяцы, из оставшихся берём
+  // последние 3 vs предыдущие 3.
+  const trendMonths = months.slice(0, Math.max(0, months.length - tailMonths));
   function periodConv(monthKeys) {
     let m = 0;
     let s = 0;
@@ -40,7 +41,7 @@ export default function KPIs({ data, filter }) {
 
   const items = [
     { label: "Встречи", value: meetings.toLocaleString("ru-RU"), color: undefined },
-    { label: "Продажи", value: sales.toLocaleString("ru-RU"), color: undefined },
+    { label: salesLabel, value: sales.toLocaleString("ru-RU"), color: undefined },
     {
       label: "Конверсия",
       value: conv == null ? "—" : `${conv.toFixed(1)}%`,
@@ -53,7 +54,10 @@ export default function KPIs({ data, filter }) {
           ? "—"
           : `${trend >= 0 ? "+" : ""}${trend.toFixed(1)} п.п.`,
       color: trend == null ? undefined : trend >= 0 ? C_POS : C_NEG,
-      subtitle: "последние 3 мес исключены",
+      subtitle:
+        trend == null
+          ? "мало данных для сравнения"
+          : `последние ${tailMonths} мес исключены`,
     },
   ];
 

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { pill, subT } from "./utils/styles.js";
 import { C_ACCENT } from "./constants.js";
 import { D } from "./data/consultants.js";
+import { SECOND_AS_D } from "./data/secondMeetings.js";
 import KPIs from "./components/KPIs.jsx";
 import ConvChart from "./components/ConvChart.jsx";
 import StatsTable from "./components/StatsTable.jsx";
@@ -33,9 +34,40 @@ export default function App() {
   const [filter, setFilter] = useState("all");
   // Разрез периодов — общий для графика и таблицы на «Общей динамике»
   const [byQuarter, setByQuarter] = useState(false);
+  // Метрика «Общей динамики»: конверсия в продажу или во вторую встречу
+  const [metric, setMetric] = useState("sales"); // sales | second
+
+  const isSecond = metric === "second";
+  // У конверсии во вторую встречу нет разреза «горячие/холодные»
+  const dynData = isSecond ? SECOND_AS_D : D;
+  const dynFilter = isSecond ? "all" : filter;
+  const dynLabels = isSecond
+    ? {
+        kpi: "Вторые встречи",
+        chartTitle: "Динамика конверсии во вторую встречу",
+        chartUnit: "втор",
+        chartTail: 1,
+        chartTailNote: "месяц не дозрел →",
+        tableTitle: "CR во вторую встречу по командам и людям",
+        tableUnit: "втор",
+        note:
+          "Вторые встречи привязаны к месяцу первичной встречи. Этап «вторая встреча» появился 16.02.2026.",
+      }
+    : {
+        kpi: "Продажи",
+        chartTitle: "Динамика конверсии в продажу",
+        chartUnit: "прод",
+        chartTail: 3,
+        chartTailNote: "сделки не дозрели →",
+        tableTitle: "CR в продажу по командам и людям",
+        tableUnit: "win",
+        note: undefined,
+      };
 
   // Фильтр виден на вкладках конверсии и в прогнозе
-  const showFilter = topTab === "forecast" || CONV_TABS.includes(subTab);
+  const showFilter =
+    topTab === "forecast" ||
+    (CONV_TABS.includes(subTab) && !(subTab === "dynamics" && isSecond));
 
   const topTabStyle = (active) => ({
     padding: "8px 4px",
@@ -123,10 +155,27 @@ export default function App() {
       {/* Контент */}
       {topTab === "analytics" && (
         <>
-          {CONV_TABS.includes(subTab) && subTab !== "rating" && <KPIs data={D} filter={filter} />}
           {subTab === "dynamics" && (
             <>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12 }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  marginBottom: 12,
+                  flexWrap: "wrap",
+                }}
+              >
+                <span style={{ fontSize: 12, color: "var(--color-text-secondary,#757987)", marginRight: 2 }}>
+                  Конверсия:
+                </span>
+                <button style={pill(!isSecond)} onClick={() => setMetric("sales")}>
+                  В продажу
+                </button>
+                <button style={pill(isSecond)} onClick={() => setMetric("second")}>
+                  Во 2-ю встречу
+                </button>
+                <span style={{ width: 14 }} />
                 <span style={{ fontSize: 12, color: "var(--color-text-secondary,#757987)", marginRight: 2 }}>
                   Разрез:
                 </span>
@@ -137,13 +186,30 @@ export default function App() {
                   Кварталы
                 </button>
               </div>
-              <ConvChart data={D} filter={filter} byQuarter={byQuarter} />
-              <StatsTable
-                data={D}
-                filter={filter}
-                mode="teams"
-                title="CR в продажу по командам и людям"
+              <KPIs
+                data={dynData}
+                filter={dynFilter}
+                salesLabel={dynLabels.kpi}
+                tailMonths={dynLabels.chartTail}
+              />
+              <ConvChart
+                data={dynData}
+                filter={dynFilter}
                 byQuarter={byQuarter}
+                title={dynLabels.chartTitle}
+                salesLabel={dynLabels.chartUnit}
+                tailMonths={dynLabels.chartTail}
+                tailNote={dynLabels.chartTailNote}
+              />
+              <StatsTable
+                data={dynData}
+                filter={dynFilter}
+                mode="teams"
+                title={dynLabels.tableTitle}
+                byQuarter={byQuarter}
+                salesLabel={dynLabels.tableUnit}
+                note={dynLabels.note}
+                tailMonths={dynLabels.chartTail}
               />
             </>
           )}

@@ -24,7 +24,7 @@ function agg(data, periodKeys, filter, isQuarter) {
 }
 
 // byQuarter — если передан, разрез управляется извне (общий контрол с таблицей)
-export default function ConvChart({ data, filter, byQuarter: byQuarterProp }) {
+export default function ConvChart({ data, filter, byQuarter: byQuarterProp, title = "Динамика конверсии", salesLabel = "прод", tailMonths = 3, tailNote = "сделки не дозрели →" }) {
   const [innerQuarter, setInnerQuarter] = useState(false);
   const controlled = byQuarterProp !== undefined;
   const byQuarter = controlled ? byQuarterProp : innerQuarter;
@@ -75,9 +75,9 @@ export default function ConvChart({ data, filter, byQuarter: byQuarterProp }) {
     return pts.length ? "M" + pts.join("L") : "";
   }
 
-  // Последние периоды не дозрели: сделки ещё закрываются, конверсия занижена.
-  // В месяцах это 3 месяца, в кварталах — 1 квартал.
-  const rawTail = byQuarter ? 1 : 3;
+  // Последние периоды не дозрели: результат ещё может появиться, конверсия занижена.
+  // Глубина лага задаётся в месяцах (tailMonths), в кварталах пересчитывается.
+  const rawTail = byQuarter ? Math.max(1, Math.ceil(tailMonths / 3)) : tailMonths;
   const tail = Math.min(rawTail, Math.max(0, periods.length - 1));
   const mature = periods.length - tail;
   const immature = (i) => i >= mature;
@@ -109,7 +109,7 @@ export default function ConvChart({ data, filter, byQuarter: byQuarterProp }) {
         }}
       >
         {controlled ? (
-          <div style={{ fontSize: 13, fontWeight: 600 }}>Динамика конверсии</div>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>{title}</div>
         ) : (
           <div style={{ display: "flex", gap: 6 }}>
             <button style={pill(!byQuarter)} onClick={() => setInnerQuarter(false)}>
@@ -216,7 +216,7 @@ export default function ConvChart({ data, filter, byQuarter: byQuarterProp }) {
               fill="var(--color-text-secondary,#757987)"
               opacity={0.75}
             >
-              сделки не дозрели →
+              {tailNote}
             </text>
           )}
 
@@ -236,7 +236,7 @@ export default function ConvChart({ data, filter, byQuarter: byQuarterProp }) {
               {teamSeries[t].map((p, i) =>
                 p.conv == null ? null : (
                   <circle key={i} cx={x(i)} cy={y(p.conv)} r={3.5} fill={TC[t]} stroke="#fff" strokeWidth={1}>
-                    <title>{`${t}: ${p.meetings} встр → ${p.sales} прод (${p.conv.toFixed(1)}%)`}</title>
+                    <title>{`${t}: ${p.meetings} встр → ${p.sales} ${salesLabel} (${p.conv.toFixed(1)}%)`}</title>
                   </circle>
                 )
               )}
@@ -272,7 +272,7 @@ export default function ConvChart({ data, filter, byQuarter: byQuarterProp }) {
                     stroke="var(--color-background-primary,#fff)"
                     strokeWidth={i === mature - 1 ? 2 : 1}
                   >
-                    <title>{`Всего: ${p.meetings} встр → ${p.sales} прод (${p.conv.toFixed(1)}%)`}</title>
+                    <title>{`Всего: ${p.meetings} встр → ${p.sales} ${salesLabel} (${p.conv.toFixed(1)}%)`}</title>
                   </circle>
                 </g>
               )

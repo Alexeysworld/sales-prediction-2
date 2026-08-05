@@ -35,3 +35,15 @@ export const SECOND_MEETINGS = [
   { name: "Сергей Р.",team: "MS1", m1: z([0,2,5,0,13,22]),   m2: z([0,1,1,0,3,4]) },
   { name: "Сергей",   team: "MS3", m1: z([0,0,11,2,3,17]),   m2: z([0,0,4,2,3,3]) },
 ];
+
+// Адаптер под форму данных консультантов (meetings/sales), чтобы переиспользовать
+// график и таблицу конверсии: первичные встречи -> meetings, вторые -> sales.
+// Разреза «горячие/холодные» у этой метрики нет, поэтому hotM/hotS пустые.
+export const SECOND_AS_D = SECOND_MEETINGS.map((d) => ({
+  name: d.name,
+  team: d.team,
+  meetings: d.m1,
+  sales: d.m2,
+  hotM: {},
+  hotS: {},
+}));

@@ -13,7 +13,7 @@ import {
 // mode: "teams" — команды с раскрытием по консультантам; "consultants" — плоский список
 // title — заголовок карточки (необязательный)
 // byQuarter — если передан, разрез управляется извне (общий контрол с графиком)
-export default function StatsTable({ data, filter, mode, title, byQuarter: byQuarterProp }) {
+export default function StatsTable({ data, filter, mode, title, byQuarter: byQuarterProp, salesLabel = "win", note, tailMonths = 3 }) {
   const [innerQuarter, setInnerQuarter] = useState(false);
   const controlled = byQuarterProp !== undefined;
   const byQuarter = controlled ? byQuarterProp : innerQuarter;
@@ -52,9 +52,10 @@ export default function StatsTable({ data, filter, mode, title, byQuarter: byQua
     return { meetings: m, sales: s, conv: cv(m, s) };
   }
 
-  // Тренд: последние 3 периода исключены (сделки не дозрели)
+  // Тренд: последние периоды исключены (результат ещё не дозрел)
+  const tailPeriods = byQuarter ? Math.max(1, Math.ceil(tailMonths / 3)) : tailMonths;
   function trendOf(vals) {
-    const usable = vals.slice(0, Math.max(0, vals.length - 3));
+    const usable = vals.slice(0, Math.max(0, vals.length - tailPeriods));
     const convs = usable.map((v) => v.conv).filter((c) => c != null);
     if (convs.length < 2) return { dir: 0, series: usable.map((v) => v.conv || 0) };
     const last = convs[convs.length - 1];
@@ -141,7 +142,7 @@ export default function StatsTable({ data, filter, mode, title, byQuarter: byQua
           {fell && <span style={{ color: C_NEG }}>▼</span>}
         </div>
         <div style={{ fontSize: 11, color: "var(--color-text-secondary,#757987)" }}>
-          {v.meetings} встреч → {v.sales} win
+          {v.meetings} встреч → {v.sales} {salesLabel}
         </div>
       </td>
     );
@@ -348,8 +349,9 @@ export default function StatsTable({ data, filter, mode, title, byQuarter: byQua
 
       {periods.length > 0 && (
         <div style={{ fontSize: 11, color: "var(--color-text-secondary,#757987)", marginTop: 10 }}>
-          Данные за период {fmL(months[0])} — {fmL(months[months.length - 1])}. Продажи
-          привязаны к месяцу встречи, а не к месяцу закрытия сделки.
+          Данные за период {fmL(months[0])} — {fmL(months[months.length - 1])}.{" "}
+          {note ||
+            "Продажи привязаны к месяцу встречи, а не к месяцу закрытия сделки."}
         </div>
       )}
     </div>
