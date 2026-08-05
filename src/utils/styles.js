@@ -119,3 +119,15 @@ export function heatColors(conv) {
   if (conv < 12) return { bg: "var(--heat-3-bg,#9BD5AE)", fg: "var(--heat-3-fg,#0E3D20)" };
   return { bg: "var(--heat-4-bg,#39AA5D)", fg: "var(--heat-4-fg,#fff)" };
 }
+
+// Пастельная шкала «красный → зелёный» для процентных оценок (0..100).
+// Оттенок и светлота берутся из токенов темы (--ramp-*), поэтому цвет
+// автоматически подстраивается под светлую/тёмную тему.
+export function rampColors(pct) {
+  if (pct == null) return { bg: "transparent", fg: "var(--color-text-tertiary,#9AA1AF)" };
+  const p = Math.max(0, Math.min(100, pct));
+  return {
+    bg: `hsl(calc(var(--ramp-h0, 4) + (var(--ramp-h1, 140) - var(--ramp-h0, 4)) * ${p} / 100) var(--ramp-s, 55%) var(--ramp-l, 86%))`,
+    fg: "var(--ramp-fg, #243027)",
+  };
+}

@@ -1,21 +1,12 @@
 import { useState } from "react";
-import { card, pill, th2, td2, kpiCard } from "../utils/styles.js";
+import { card, pill, th2, td2, kpiCard, rampColors } from "../utils/styles.js";
 import { TC, PAL, C_POS } from "../constants.js";
 import { fmL } from "../utils/dateUtils.js";
 import { MEETING_QUALITY, MQ_CRITERIA, MQ_MAX } from "../data/meetingQuality.js";
 import { MQ_PATTERNS, MQ_BENCHMARKS } from "../data/meetingPatterns.js";
 
-// Пастельная тепловая карта: красный → зелёный в бренд-оттенках.
-// Границы шкалы и светлота живут в токенах темы (--ramp-*), поэтому цвет
-// автоматически подстраивается под светлую/тёмную тему.
-function pastelHeat(pct) {
-  if (pct == null) return { bg: "transparent", fg: "var(--color-text-tertiary,#9AA1AF)" };
-  const p = Math.max(0, Math.min(100, pct));
-  return {
-    bg: `hsl(calc(var(--ramp-h0, 4) + (var(--ramp-h1, 140) - var(--ramp-h0, 4)) * ${p} / 100) var(--ramp-s, 55%) var(--ramp-l, 86%))`,
-    fg: "var(--ramp-fg, #243027)",
-  };
-}
+// Пастельная шкала оценок — общая функция из utils/styles.js
+const pastelHeat = rampColors;
 
 const mean = (arr) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0);
 const median = (arr) => {
