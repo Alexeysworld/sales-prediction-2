@@ -28,7 +28,8 @@ export default function ConvChart({ data, filter, byQuarter: byQuarterProp, titl
   const [innerQuarter, setInnerQuarter] = useState(false);
   const controlled = byQuarterProp !== undefined;
   const byQuarter = controlled ? byQuarterProp : innerQuarter;
-  const [activeTeams, setActiveTeams] = useState({ MS1: true, MS2: true, MS3: true });
+  // По умолчанию показываем только линию «Всего»; команды включаются кнопками MS1/MS2/MS3
+  const [activeTeams, setActiveTeams] = useState({ MS1: false, MS2: false, MS3: false });
   const [hover, setHover] = useState(null); // ключ выделенной линии
 
   const months = actMo(data, filter);
@@ -52,13 +53,15 @@ export default function ConvChart({ data, filter, byQuarter: byQuarterProp, titl
     teamSeries[t] = agg(teamData, periods, filter, byQuarter);
   }
 
-  // Максимум конверсии для оси Y (минимум 15%)
-  let maxConv = 15;
-  const allConvs = [
+  // Максимум оси Y — только по видимым линиям (скрытые команды не должны
+  // растягивать шкалу и сплющивать линию «Всего»)
+  const visibleConvs = [
     ...totalSeries.map((p) => p.conv || 0),
-    ...TEAMS.flatMap((t) => teamSeries[t].map((p) => p.conv || 0)),
+    ...TEAMS.filter((t) => activeTeams[t]).flatMap((t) =>
+      teamSeries[t].map((p) => p.conv || 0)
+    ),
   ];
-  maxConv = Math.max(15, Math.ceil(Math.max(0, ...allConvs) / 5) * 5);
+  const maxConv = Math.max(15, Math.ceil(Math.max(0, ...visibleConvs) / 5) * 5);
 
   const x = (i) =>
     padL + (periods.length <= 1 ? innerW / 2 : (innerW * i) / (periods.length - 1));

@@ -35,7 +35,9 @@ const OVERLAP_TO = [
 const METRICS = [
   {
     id: "sales",
-    label: "Топ по конверсии в продажу",
+    column: "Конверсия в продажу",
+    topTitle: "Топ-3 по конверсии из встречи в продажу",
+    antiTitle: "Антитоп-3 по конверсии из встречи в продажу",
     short: "конверсия в продажу",
     value: (r) => r.conv,
     n: (r) => r.meetings,
@@ -44,7 +46,9 @@ const METRICS = [
   },
   {
     id: "second",
-    label: "Топ по конверсии в повторную встречу",
+    column: "Конверсия в повторную встречу",
+    topTitle: "Топ-3 по конверсии во вторую встречу",
+    antiTitle: "Антитоп-3 по конверсии во вторую встречу",
     short: "конверсия во 2-ю встречу",
     value: (r) => r.cr2,
     n: (r) => r.m1,
@@ -53,7 +57,9 @@ const METRICS = [
   },
   {
     id: "quality",
-    label: "Топ по качеству первой встречи",
+    column: "Качество проведения встречи",
+    topTitle: "Топ-3 по качеству проведения встречи",
+    antiTitle: "Антитоп-3 по качеству проведения встречи",
     short: "качество встречи",
     value: (r) => r.qpct,
     n: (r) => r.qn,
@@ -82,11 +88,9 @@ const selStyle = {
 export default function ExperimentTab() {
   const [from, setFrom] = useState(OVERLAP_FROM);
   const [to, setTo] = useState(OVERLAP_TO);
-  const [metricId, setMetricId] = useState("sales");
   const [minN, setMinN] = useState(10);
 
   const range = ALL_MONTHS.filter((m) => m >= from && m <= to);
-  const metric = METRICS.find((m) => m.id === metricId);
 
   // Продажи дозревают ~3 месяца: если период включает последние месяцы,
   // конверсия в продажу по ним занижена.
@@ -159,153 +163,158 @@ export default function ExperimentTab() {
     return ok;
   }
 
-  const mSales = METRICS[0];
-  const mQual = METRICS[2];
-  const highlights = [
-    { title: "Топ-3 по конверсии из встречи в продажу", metric: mSales, dir: "desc", good: true },
-    { title: "Топ-3 по качеству проведения встречи", metric: mQual, dir: "desc", good: true },
-    { title: "Антитоп-3 по конверсии из встречи в продажу", metric: mSales, dir: "asc", good: false },
-    { title: "Антитоп-3 по качеству проведения встречи", metric: mQual, dir: "asc", good: false },
-  ];
-
-  // Таблица рейтинга по выбранной метрике
-  const eligible = ranked(metric, "desc");
-  const rest = rows
-    .filter((r) => !eligible.includes(r))
-    .sort((a, b) => (metric.value(b) || 0) - (metric.value(a) || 0));
-
-  const hl = "var(--row-selected,#EAF1FE)";
-
   function TeamChip({ team }) {
     return (
-      <span style={{ color: TC[team] || "var(--color-text-secondary,#757987)", fontWeight: 600, fontSize: 11 }}>
+      <span
+        style={{
+          color: TC[team] || "var(--color-text-secondary,#757987)",
+          fontWeight: 600,
+          fontSize: 11,
+        }}
+      >
         {team || "—"}
       </span>
     );
   }
 
-  function HighlightCard({ title, metric: m, dir, good }) {
+  // Значение метрики с цветом: единая шкала «красный → зелёный», нормированная
+  // под диапазон метрики (у трёх метрик разные масштабы).
+  function valueColors(m, r) {
+    const enough = m.n(r) >= minN && m.value(r) != null;
+    return enough
+      ? rampColors(Math.min(100, (m.value(r) / NORM[m.id]) * 100))
+      : { bg: "transparent", fg: "var(--color-text-tertiary,#9AA1AF)" };
+  }
+  const fmtVal = (m, v) => (v == null ? "—" : `${v.toFixed(m.id === "quality" ? 0 : 1)}%`);
+
+  // Карточка топ-3 / антитоп-3
+  function HighlightCard({ metric: m, dir }) {
+    const good = dir === "desc";
     const list = ranked(m, dir).slice(0, 3);
     const accent = good ? C_POS : C_NEG;
     return (
       <div style={{ ...card, marginBottom: 0, borderLeft: `3px solid ${accent}` }}>
-        <div style={{ ...kpiLabel, marginBottom: 10 }}>{title}</div>
-        {list.length === 0 && (
+        <div style={{ ...kpiLabel, marginBottom: 10 }}>{good ? m.topTitle : m.antiTitle}</div>
+        {list.length === 0 ? (
           <div style={{ fontSize: 12.5, color: "var(--color-text-secondary,#757987)" }}>
             Нет консультантов с {minN}+ {m.unit} за период
           </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+            {list.map((r, i) => (
+              <div key={r.name} style={{ display: "flex", alignItems: "baseline", gap: 9 }}>
+                <span
+                  style={{
+                    width: 19,
+                    height: 19,
+                    flexShrink: 0,
+                    borderRadius: 999,
+                    background: "var(--color-background-secondary,#E8EBEE)",
+                    color: "var(--color-text-secondary,#757987)",
+                    fontSize: 10.5,
+                    fontWeight: 700,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  {i + 1}
+                </span>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ fontWeight: 600, fontSize: 13.5 }}>{r.name}</span>{" "}
+                  <TeamChip team={r.team} />
+                  <div style={{ fontSize: 11, color: "var(--color-text-secondary,#757987)" }}>
+                    {m.sub(r)}
+                  </div>
+                </span>
+                <span
+                  style={{
+                    fontSize: 17,
+                    fontWeight: 700,
+                    color: accent,
+                    fontVariantNumeric: "tabular-nums",
+                  }}
+                >
+                  {fmtVal(m, m.value(r))}
+                </span>
+              </div>
+            ))}
+          </div>
         )}
-        <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-          {list.map((r, i) => (
-            <div key={r.name} style={{ display: "flex", alignItems: "baseline", gap: 9 }}>
-              <span
-                style={{
-                  width: 19,
-                  height: 19,
-                  flexShrink: 0,
-                  borderRadius: 999,
-                  background: "var(--color-background-secondary,#E8EBEE)",
-                  color: "var(--color-text-secondary,#757987)",
-                  fontSize: 10.5,
-                  fontWeight: 700,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                {i + 1}
-              </span>
-              <span style={{ flex: 1, minWidth: 0 }}>
-                <span style={{ fontWeight: 600, fontSize: 13.5 }}>{r.name}</span>{" "}
-                <TeamChip team={r.team} />
-                <div style={{ fontSize: 11, color: "var(--color-text-secondary,#757987)" }}>
-                  {m.sub(r)}
-                </div>
-              </span>
-              <span
-                style={{
-                  fontSize: 17,
-                  fontWeight: 700,
-                  color: accent,
-                  fontVariantNumeric: "tabular-nums",
-                }}
-              >
-                {m.value(r).toFixed(m.id === "quality" ? 0 : 1)}%
-              </span>
-            </div>
-          ))}
-        </div>
       </div>
     );
   }
 
-  // Цвет ячейки: единая шкала «красный → зелёный», нормированная под диапазон
-  // метрики (у конверсии в продажу и во вторую встречу разные масштабы).
-  function HeatCell({ value, n, sub, active, norm }) {
-    const enough = n >= minN && value != null;
-    const { bg, fg } = enough
-      ? rampColors(Math.min(100, (value / norm) * 100))
-      : { bg: active ? hl : "transparent", fg: "var(--color-text-tertiary,#9AA1AF)" };
+  // Полная таблица по метрике
+  function MetricTable({ metric: m }) {
+    const eligible = ranked(m, "desc");
+    const rest = rows
+      .filter((r) => !eligible.includes(r))
+      .sort((a, b) => (m.value(b) || 0) - (m.value(a) || 0));
+    const thc = { ...th2, padding: "6px 7px" };
+    const tdc = { ...td2, padding: "7px", fontSize: 12.5 };
+
+    const Row = ({ r, rank, dim }) => {
+      const { bg, fg } = valueColors(m, r);
+      return (
+        <tr style={dim ? { opacity: 0.55 } : undefined}>
+          <td style={{ ...tdc, textAlign: "center", color: "var(--color-text-secondary,#757987)" }}>
+            {rank || "—"}
+          </td>
+          <td style={{ ...tdc, whiteSpace: "nowrap" }}>
+            <span style={{ fontWeight: 600 }}>{r.name}</span> <TeamChip team={r.team} />
+          </td>
+          <td style={{ ...tdc, textAlign: "right", whiteSpace: "nowrap", color: "var(--color-text-secondary,#757987)", fontSize: 11 }}>
+            {m.sub(r)}
+          </td>
+          <td style={{ ...tdc, textAlign: "center", background: bg, color: fg, fontWeight: 700, whiteSpace: "nowrap" }}>
+            {fmtVal(m, m.value(r))}
+          </td>
+        </tr>
+      );
+    };
+
     return (
-      <td
-        style={{
-          ...td2,
-          textAlign: "center",
-          background: bg,
-          color: fg,
-          whiteSpace: "nowrap",
-          borderLeft: active ? "2px solid var(--ring,#39AA5D)" : undefined,
-          borderRight: active ? "2px solid var(--ring,#39AA5D)" : undefined,
-        }}
-      >
-        <div style={{ fontWeight: 700 }}>
-          {value == null ? "—" : `${value.toFixed(norm === 100 ? 0 : 1)}%`}
+      <div style={{ ...card, marginBottom: 0 }}>
+        <div style={{ ...kpiLabel, marginBottom: 10 }}>Все консультанты</div>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ borderCollapse: "collapse", width: "100%" }}>
+            <thead>
+              <tr>
+                <th style={{ ...thc, textAlign: "center" }}>#</th>
+                <th style={thc}>Консультант</th>
+                <th style={{ ...thc, textAlign: "right" }}>Данные</th>
+                <th style={{ ...thc, textAlign: "center" }}>%</th>
+              </tr>
+            </thead>
+            <tbody>
+              {eligible.map((r, i) => (
+                <Row key={r.name} r={r} rank={i + 1} />
+              ))}
+              {rest.length > 0 && (
+                <tr>
+                  <td
+                    colSpan={4}
+                    style={{
+                      ...tdc,
+                      background: "var(--color-background-secondary,#E8EBEE)",
+                      fontSize: 11,
+                      color: "var(--color-text-secondary,#757987)",
+                    }}
+                  >
+                    Меньше {minN} наблюдений — вне рейтинга
+                  </td>
+                </tr>
+              )}
+              {rest.map((r) => (
+                <Row key={r.name} r={r} rank={null} dim />
+              ))}
+            </tbody>
+          </table>
         </div>
-        <div style={{ fontSize: 11, opacity: 0.75 }}>{sub}</div>
-      </td>
+      </div>
     );
   }
-
-  function Row({ r, rank, dim }) {
-    return (
-      <tr style={dim ? { opacity: 0.55 } : undefined}>
-        <td style={{ ...td2, textAlign: "center", color: "var(--color-text-secondary,#757987)" }}>
-          {rank || "—"}
-        </td>
-        <td style={{ ...td2, fontWeight: 600, whiteSpace: "nowrap" }}>{r.name}</td>
-        <td style={td2}>
-          <TeamChip team={r.team} />
-        </td>
-        <HeatCell
-          value={r.conv}
-          n={r.meetings}
-          sub={`${r.meetings} → ${r.sales}`}
-          active={metricId === "sales"}
-          norm={NORM.sales}
-        />
-        <HeatCell
-          value={r.cr2}
-          n={r.m1}
-          sub={`${r.m1} → ${r.m2}`}
-          active={metricId === "second"}
-          norm={NORM.second}
-        />
-        <HeatCell
-          value={r.qpct}
-          n={r.qn}
-          sub={r.qn ? `${r.qn} оц.` : "—"}
-          active={metricId === "quality"}
-          norm={NORM.quality}
-        />
-      </tr>
-    );
-  }
-
-  const thPrimary = (id) => ({
-    ...th2,
-    textAlign: "center",
-    background: metricId === id ? hl : undefined,
-  });
 
   return (
     <div>
@@ -314,9 +323,9 @@ export default function ExperimentTab() {
           Рейтинг консультантов · эксперимент
         </div>
         <div style={{ fontSize: 12.5, color: "var(--color-text-secondary,#757987)", marginTop: 4 }}>
-          Конверсия в продажу, конверсия во вторую встречу и качество первой встречи в одном
-          месте — за общий период. Топы считаются только по консультантам, у которых
-          достаточно наблюдений: иначе одна встреча с одной продажей даёт «100%».
+          Три метрики рядом за общий период: конверсия в продажу, конверсия в повторную встречу и
+          качество первой встречи. В рейтинг попадают только консультанты, у которых достаточно
+          наблюдений — иначе одна встреча с одной продажей даёт «100%».
         </div>
       </div>
 
@@ -374,8 +383,8 @@ export default function ExperimentTab() {
           <span style={{ fontSize: 12.5, flex: 1, minWidth: 260 }}>
             В период входят {immatureCount}{" "}
             {immatureCount === 1 ? "месяц" : immatureCount < 5 ? "месяца" : "месяцев"}, где сделки
-            ещё дозревают — конверсия в продажу по ним занижена, рейтинг по этой метрике сдвинут.
-            Качество и вторая встреча дозревают быстрее.
+            ещё дозревают — конверсия в продажу по ним занижена. Качество и вторая встреча
+            дозревают быстрее.
           </span>
           <button style={pill(false)} onClick={excludeImmature}>
             Только дозревшие месяцы (до {fmL(lastMature)})
@@ -383,81 +392,45 @@ export default function ExperimentTab() {
         </div>
       )}
 
-      {/* Топы и антитопы */}
+      {/* Три колонки: по колонке на метрику */}
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fit, minmax(330px, 1fr))",
           gap: 12,
-          marginBottom: 14,
+          alignItems: "start",
         }}
       >
-        {highlights.map((h) => (
-          <HighlightCard key={h.title} {...h} />
+        {METRICS.map((m) => (
+          <div key={m.id} style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: 14,
+                fontWeight: 700,
+                letterSpacing: "-0.01em",
+                paddingBottom: 2,
+                borderBottom: `2px solid ${
+                  m.id === "sales" ? TC.MS1 : m.id === "second" ? TC.MS2 : TC.MS3
+                }`,
+              }}
+            >
+              {m.column}
+            </div>
+            <HighlightCard metric={m} dir="desc" />
+            <HighlightCard metric={m} dir="asc" />
+            <MetricTable metric={m} />
+          </div>
         ))}
       </div>
 
-      {/* Рейтинг: переключатель метрики + таблица */}
-      <div style={card}>
-        <div style={{ display: "flex", gap: 6, marginBottom: 4, flexWrap: "wrap" }}>
-          {METRICS.map((m) => (
-            <button key={m.id} style={pill(metricId === m.id)} onClick={() => setMetricId(m.id)}>
-              {m.label}
-            </button>
-          ))}
-        </div>
-        <div style={{ fontSize: 12.5, color: "var(--color-text-secondary,#757987)", margin: "8px 0 12px" }}>
-          Сортировка по «{metric.short}»; выбранная метрика подсвечена. Рядом — две другие,
-          чтобы видеть связь между качеством встречи и конверсией.
-        </div>
-
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 640 }}>
-            <thead>
-              <tr>
-                <th style={{ ...th2, textAlign: "center" }}>#</th>
-                <th style={th2}>Консультант</th>
-                <th style={th2}>Команда</th>
-                <th style={thPrimary("sales")}>В продажу</th>
-                <th style={thPrimary("second")}>Во 2-ю встречу</th>
-                <th style={thPrimary("quality")}>Качество</th>
-              </tr>
-            </thead>
-            <tbody>
-              {eligible.map((r, i) => (
-                <Row key={r.name} r={r} rank={i + 1} />
-              ))}
-              {rest.length > 0 && (
-                <tr>
-                  <td
-                    colSpan={6}
-                    style={{
-                      ...td2,
-                      background: "var(--color-background-secondary,#E8EBEE)",
-                      fontSize: 11.5,
-                      color: "var(--color-text-secondary,#757987)",
-                    }}
-                  >
-                    Меньше {minN} наблюдений по метрике «{metric.short}» — в рейтинг не попадают
-                  </td>
-                </tr>
-              )}
-              {rest.map((r) => (
-                <Row key={r.name} r={r} rank={null} dim />
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div style={{ fontSize: 11, color: "var(--color-text-secondary,#757987)", marginTop: 10, lineHeight: 1.5 }}>
-          Период {fmL(range[0] || from)} — {fmL(range[range.length - 1] || to)}. Покрытие данных
-          различается: конверсия в продажу — с {fmL(D_MONTHS[0])}, вторая встреча — с{" "}
-          {fmL(SM_MONTHS[0])}, качество — с {fmL(Q_MONTHS[0])}. По умолчанию период выставлен на
-          пересечение всех трёх. Продажи привязаны к месяцу встречи, последние месяцы занижены —
-          сделки ещё дозревают. Цвет нормирован под масштаб метрики: зелёный максимум — это{" "}
-          {NORM.sales}% в продажу, {NORM.second}% во вторую встречу и {NORM.quality}% качества;
-          серым — у кого меньше {minN} наблюдений.
-        </div>
+      <div style={{ fontSize: 11, color: "var(--color-text-secondary,#757987)", marginTop: 14, lineHeight: 1.5 }}>
+        Период {fmL(range[0] || from)} — {fmL(range[range.length - 1] || to)}. Покрытие данных
+        различается: конверсия в продажу — с {fmL(D_MONTHS[0])}, вторая встреча — с{" "}
+        {fmL(SM_MONTHS[0])}, качество — с {fmL(Q_MONTHS[0])}. По умолчанию период выставлен на
+        пересечение всех трёх. Продажи привязаны к месяцу встречи, последние месяцы занижены —
+        сделки ещё дозревают. Цвет нормирован под масштаб метрики: зелёный максимум — это{" "}
+        {NORM.sales}% в продажу, {NORM.second}% во вторую встречу и {NORM.quality}% качества.
+        При равных значениях выше тот, у кого больше наблюдений.
       </div>
     </div>
   );
