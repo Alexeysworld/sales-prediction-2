@@ -8,7 +8,6 @@ import ConvChart from "./components/ConvChart.jsx";
 import StatsTable from "./components/StatsTable.jsx";
 import MeetingQualityTab from "./components/MeetingQualityTab.jsx";
 import ExperimentTab from "./components/ExperimentTab.jsx";
-import ForecastTab from "./components/ForecastTab.jsx";
 import ForecastYoY from "./components/ForecastYoY.jsx";
 
 // Подвкладки аналитики
@@ -24,19 +23,12 @@ const FILTERS = [
   { id: "cold", label: "Холодные" },
 ];
 
-// Подвкладки прогноза
-const FORECAST_TABS = [
-  { id: "yoy", label: "По динамике встреч" },
-  { id: "scenarios", label: "Сценарии" },
-];
-
 // Подвкладки, к которым применим фильтр Все/Горячие/Холодные (продажи из встреч)
 const CONV_TABS = ["dynamics"];
 
 export default function App() {
   const [topTab, setTopTab] = useState("analytics"); // analytics | forecast
   const [subTab, setSubTab] = useState("dynamics");
-  const [fcTab, setFcTab] = useState("yoy"); // yoy | scenarios
   const [filter, setFilter] = useState("all");
   // Разрез периодов — общий для графика и таблицы на «Общей динамике»
   const [byQuarter, setByQuarter] = useState(false);
@@ -87,10 +79,9 @@ export default function App() {
         note: undefined,
       };
 
-  // Фильтр виден на вкладках конверсии и в прогнозе
+  // Фильтр виден только на вкладках конверсии
   const showFilter =
-    (topTab === "forecast" && fcTab === "scenarios") ||
-    (topTab === "analytics" && CONV_TABS.includes(subTab) && !(subTab === "dynamics" && isSecond));
+    topTab === "analytics" && CONV_TABS.includes(subTab) && !(subTab === "dynamics" && isSecond);
 
   const topTabStyle = (active) => ({
     padding: "8px 4px",
@@ -173,29 +164,29 @@ export default function App() {
         </div>
       </div>
 
-      {/* Второй уровень — подвкладки в одну строку */}
-      <div
-        style={{
-          display: "flex",
-          gap: 4,
-          flexWrap: "nowrap",
-          overflowX: "auto",
-          marginBottom: 16,
-        }}
-      >
-        {(topTab === "analytics" ? SUB_TABS : FORECAST_TABS).map((t) => {
-          const active = topTab === "analytics" ? subTab === t.id : fcTab === t.id;
-          return (
+      {/* Второй уровень — подвкладки аналитики в одну строку.
+          У прогноза подвкладок нет, поэтому строка не рисуется. */}
+      {topTab === "analytics" && (
+        <div
+          style={{
+            display: "flex",
+            gap: 4,
+            flexWrap: "nowrap",
+            overflowX: "auto",
+            marginBottom: 16,
+          }}
+        >
+          {SUB_TABS.map((t) => (
             <button
               key={t.id}
-              style={{ ...subT(active), padding: "5px 9px", whiteSpace: "nowrap", flexShrink: 0 }}
-              onClick={() => (topTab === "analytics" ? setSubTab(t.id) : setFcTab(t.id))}
+              style={{ ...subT(subTab === t.id), padding: "5px 9px", whiteSpace: "nowrap", flexShrink: 0 }}
+              onClick={() => setSubTab(t.id)}
             >
               {t.label}
             </button>
-          );
-        })}
-      </div>
+          ))}
+        </div>
+      )}
 
       {/* Контент */}
       {topTab === "analytics" && (
@@ -263,8 +254,7 @@ export default function App() {
         </>
       )}
 
-      {topTab === "forecast" && fcTab === "yoy" && <ForecastYoY />}
-      {topTab === "forecast" && fcTab === "scenarios" && <ForecastTab filter={filter} />}
+      {topTab === "forecast" && <ForecastYoY />}
     </div>
   );
 }

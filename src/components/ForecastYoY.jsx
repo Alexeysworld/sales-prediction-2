@@ -216,7 +216,9 @@ export default function ForecastYoY() {
   const innerH = H - padT - padB;
   const yMax = Math.max(
     25,
-    Math.ceil(Math.max(...rows.map((r) => Math.max(r.hi, r.closed ?? 0))) / 5) * 5
+    Math.ceil(
+      Math.max(...rows.map((r) => Math.max(r.hi, r.partial ? 0 : (r.closed ?? 0)))) / 5
+    ) * 5
   );
   const x = (i) => padL + (innerW * i) / (rows.length - 1);
   const y = (v) => padT + innerH - (innerH * v) / yMax;
@@ -231,10 +233,12 @@ export default function ForecastYoY() {
     [...rows].reverse().map((r, i) => `${x(rows.length - 1 - i)},${y(r.lo)}`).join("L") +
     "Z";
   const midLine = "M" + rows.map((r, i) => `${x(i)},${y(r.mid)}`).join("L");
+  // Факт рисуем только по завершённым месяцам: у текущего он недобран и линия
+  // обвалилась бы вниз, хотя месяц ещё идёт. В таблице его цифра остаётся.
+  const onChart = (r) => r.closed != null && !r.partial;
   const factLine =
-    rows.filter((r) => r.closed != null).length > 1
-      ? "M" +
-        rows.map((r, i) => (r.closed == null ? null : `${x(i)},${y(r.closed)}`)).filter(Boolean).join("L")
+    rows.filter(onChart).length > 1
+      ? "M" + rows.map((r, i) => (onChart(r) ? `${x(i)},${y(r.closed)}` : null)).filter(Boolean).join("L")
       : "";
   // с какого месяца часть встреч уже смоделирована
   const firstPartial = rows.findIndex((r) => r.ready < 0.999);
@@ -305,7 +309,8 @@ export default function ForecastYoY() {
         <div style={{ fontSize: 12.5, color: "var(--color-text-secondary,#757987)", margin: "4px 0 12px" }}>
           Штриховая линия — прогноз: сколько сделок закроется в этом месяце по встречам
           предыдущих месяцев, конверсии и циклу сделки. Полоса — пессимистичный и оптимистичный
-          сценарий. Сплошная линия — факт закрытий.
+          сценарий. Сплошная линия — факт закрытий; текущий месяц на ней не показан, пока он
+          не закончился — его цифра есть в таблице.
         </div>
         <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: "visible" }}>
           {yTicks.map((v) => (
@@ -380,7 +385,7 @@ export default function ForecastYoY() {
               >
                 {r.mid.toFixed(0)}
               </text>
-              {r.closed != null && (
+              {onChart(r) && (
                 <>
                   <circle
                     cx={x(i)}
@@ -389,7 +394,6 @@ export default function ForecastYoY() {
                     fill={C_FACT}
                     stroke="var(--color-background-primary,#fff)"
                     strokeWidth={1.4}
-                    opacity={r.partial ? 0.5 : 1}
                   />
                   <text
                     x={x(i)}
@@ -398,7 +402,6 @@ export default function ForecastYoY() {
                     fontSize={9}
                     fontWeight={700}
                     fill={C_FACT}
-                    opacity={r.partial ? 0.55 : 1}
                   >
                     {r.closed}
                   </text>
@@ -426,11 +429,9 @@ export default function ForecastYoY() {
                       (r.ready < 0.999 ? ` (${r.fromKnown.toFixed(1)} из ${r.mid.toFixed(1)})` : ""),
                     ...(r.closed == null
                       ? []
-                      : [
-                          "",
-                          `Факт закрытий: ${r.closed}` +
-                            (r.partial ? " (месяц не закончился)" : ` (${signed(r.closed - r.mid)})`),
-                        ]),
+                      : r.partial
+                        ? ["", `Закрыто на сегодня: ${r.closed} — месяц ещё идёт,`, "на линии факта не показываем"]
+                        : ["", `Факт закрытий: ${r.closed} (${signed(r.closed - r.mid)})`]),
                   ].join("\n")}
                 </title>
               </rect>
