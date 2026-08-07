@@ -3,6 +3,7 @@ import { C_POS, C_NEG, C_WARN, TC } from "../constants.js";
 import { gM, gS } from "../utils/convUtils.js";
 import { actMo, fmL } from "../utils/dateUtils.js";
 import { D } from "../data/consultants.js";
+import { SF_MONTHS, WON_BY_MONTH } from "../data/salesFact.js";
 
 // ── Параметры модели ────────────────────────────────────────────────────────
 const LAG = 3;          // месяцев дозревания сделки
@@ -11,7 +12,13 @@ const YOY_WINDOW = 3;   // по скольким последним месяца
 const Z = 1.96;         // 95% доверительный интервал
 
 // Цвет линии факта — отдельный от зелёного «дозрел», чтобы не путать статус со значением
-const C_FACT = "#D76BFE";
+const C_FACT = "#D76BFE";  // факт по месяцу первичной встречи
+const C_CLOSE = "#14B8A6"; // факт по месяцу закрытия сделки
+
+// Закрытые сделки по месяцу закрытия
+const CLOSED = Object.fromEntries(WON_BY_MONTH.map((r) => [r.month, r.won]));
+// Последний месяц выгрузки — это месяц, в который её сделали, значит он неполный
+const PARTIAL_CLOSE = SF_MONTHS[SF_MONTHS.length - 1];
 
 const MONTHS_ALL = actMo(D, "all");
 const LAST = MONTHS_ALL[MONTHS_ALL.length - 1];
@@ -103,7 +110,12 @@ function buildModel() {
     const dev = fact == null ? null : fact - mid;
     const devPct = fact == null || !mid ? null : (fact - mid) / mid;
 
-    rows.push({ key, kind, mSource, hotM, coldM, lo, mid, hi, fact, dev, devPct });
+    const closed = key in CLOSED ? CLOSED[key] : null;
+    rows.push({
+      key, kind, mSource, hotM, coldM, lo, mid, hi, fact, dev, devPct,
+      closed,
+      closedPartial: key === PARTIAL_CLOSE,
+    });
   }
 
   // Чистая модель за год
@@ -135,6 +147,21 @@ function buildModel() {
     "all"
   ).s;
 
+  // Закрытые сделки: всего за год и сравнение с прошлым годом.
+  // Сравниваем только по полным месяцам — месяц выгрузки недобран.
+  const closeMonths = SF_MONTHS.filter((m) => m.startsWith(String(YEAR)));
+  const fullMonths = closeMonths.filter((m) => m !== PARTIAL_CLOSE);
+  const sumClosed = (ms) => ms.reduce((a, m) => a + (CLOSED[m] || 0), 0);
+  const closes = {
+    ytd: sumClosed(closeMonths),
+    full: sumClosed(fullMonths),
+    fullPrev: sumClosed(fullMonths.map(prevYear)),
+    from: fullMonths[0],
+    to: fullMonths[fullMonths.length - 1],
+    partial: PARTIAL_CLOSE,
+  };
+  closes.k = closes.fullPrev ? closes.full / closes.fullPrev : 1;
+
   return {
     base,
     conv,
@@ -147,6 +174,7 @@ function buildModel() {
     expected,
     check,
     booked,
+    closes,
   };
 }
 
@@ -158,7 +186,7 @@ const KIND = {
 
 export default function ForecastYoY() {
   const M = buildModel();
-  const { conv, growth, rows, model, expected, check } = M;
+  const { conv, growth, rows, model, expected, check, closes } = M;
 
   // ── График: модель (диапазон + реалистичная линия) и факт ────────────────
   const W = 920;
@@ -171,7 +199,7 @@ export default function ForecastYoY() {
   const innerH = H - padT - padB;
   const yMax = Math.max(
     25,
-    Math.ceil(Math.max(...rows.map((r) => Math.max(r.hi, r.fact ?? 0))) / 5) * 5
+    Math.ceil(Math.max(...rows.map((r) => Math.max(r.hi, r.fact ?? 0, r.closed ?? 0))) / 5) * 5
   );
   const x = (i) => padL + (innerW * i) / (rows.length - 1);
   const y = (v) => padT + innerH - (innerH * v) / yMax;
@@ -191,6 +219,12 @@ export default function ForecastYoY() {
     factRows.length > 1
       ? "M" + rows.map((r, i) => (r.fact == null ? null : `${x(i)},${y(r.fact)}`)).filter(Boolean).join("L")
       : "";
+  const closedRows = rows.filter((r) => r.closed != null);
+  const closedLine =
+    closedRows.length > 1
+      ? "M" +
+        rows.map((r, i) => (r.closed == null ? null : `${x(i)},${y(r.closed)}`)).filter(Boolean).join("L")
+      : "";
   const firstForecast = rows.findIndex((r) => r.kind === "forecast");
   const firstMaturing = rows.findIndex((r) => r.kind === "maturing");
 
@@ -207,7 +241,7 @@ export default function ForecastYoY() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fit, minmax(196px, 1fr))",
           gap: 12,
           marginBottom: 14,
         }}
@@ -240,7 +274,20 @@ export default function ForecastYoY() {
           <div style={kpiLabel}>Продажи {YEAR} — итог</div>
           <div style={kpiValue}>{expected.mid.toFixed(0)}</div>
           <div style={{ fontSize: 11, color: "var(--color-text-secondary,#757987)" }}>
-            диапазон {expected.lo.toFixed(0)} – {expected.hi.toFixed(0)} · закрыто {M.booked}
+            диапазон {expected.lo.toFixed(0)} – {expected.hi.toFixed(0)} · по встречам уже
+            закрыто {M.booked}
+          </div>
+        </div>
+        <div style={kpiCard}>
+          <div style={kpiLabel}>Закрыто сделок в {YEAR}</div>
+          <div style={{ ...kpiValue, color: C_CLOSE }}>{closes.ytd}</div>
+          <div style={{ fontSize: 11, color: "var(--color-text-secondary,#757987)" }}>
+            {fmL(closes.from)}–{fmL(closes.to)}: {closes.full} против {closes.fullPrev} год назад{" "}
+            <span style={{ color: closes.k >= 1 ? C_POS : C_NEG, fontWeight: 600 }}>
+              ({signed((closes.k - 1) * 100, 0)}%)
+            </span>
+            {" · "}
+            {fmL(closes.partial)} не закончен
           </div>
         </div>
       </div>
@@ -252,7 +299,8 @@ export default function ForecastYoY() {
         </div>
         <div style={{ fontSize: 12.5, color: "var(--color-text-secondary,#757987)", margin: "4px 0 12px" }}>
           Полоса — пессимистичный и оптимистичный сценарий, чёрная линия — реалистичный.
-          Пунктирная сиреневая линия — фактические продажи. Продажи привязаны к месяцу встречи.
+          Бирюзовая линия — сделки, закрытые в этом месяце. Сиреневая пунктирная —
+          тот же факт, но отнесённый к месяцу первичной встречи, как в модели.
         </div>
         <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: "visible" }}>
           {yTicks.map((v) => (
@@ -321,10 +369,12 @@ export default function ForecastYoY() {
           <path d={band} fill="var(--chart-area,rgba(86,214,127,.10))" stroke="none" />
           <path d={midLine} fill="none" stroke="var(--color-text-primary,#292B32)" strokeWidth={2.4} />
 
-          {/* Факт */}
+          {/* Факт по месяцу первичной встречи */}
           {factLine && (
-            <path d={factLine} fill="none" stroke={C_FACT} strokeWidth={2.2} strokeDasharray="6,3" />
+            <path d={factLine} fill="none" stroke={C_FACT} strokeWidth={1.6} strokeDasharray="6,3" />
           )}
+          {/* Факт по месяцу закрытия сделки */}
+          {closedLine && <path d={closedLine} fill="none" stroke={C_CLOSE} strokeWidth={2.4} />}
 
           {rows.map((r, i) => (
             <g key={r.key}>
@@ -346,25 +396,38 @@ export default function ForecastYoY() {
               >
                 {r.mid.toFixed(0)}
               </text>
+              {/* Факт по встрече — только точка: значения есть в таблице и тултипе,
+                  подписи трёх серий разом накладывались бы друг на друга */}
               {r.fact != null && (
+                <circle
+                  cx={x(i)}
+                  cy={y(r.fact)}
+                  r={3}
+                  fill={C_FACT}
+                  stroke="var(--color-background-primary,#fff)"
+                  strokeWidth={1.2}
+                />
+              )}
+              {r.closed != null && (
                 <>
                   <circle
                     cx={x(i)}
-                    cy={y(r.fact)}
-                    r={3.4}
-                    fill={C_FACT}
+                    cy={y(r.closed)}
+                    r={3.6}
+                    fill={C_CLOSE}
                     stroke="var(--color-background-primary,#fff)"
                     strokeWidth={1.4}
                   />
                   <text
                     x={x(i)}
-                    y={y(r.fact) + (r.fact >= r.mid ? -9 : 15)}
+                    y={y(r.closed) + (r.closed >= r.mid ? -9 : 15)}
                     textAnchor="middle"
                     fontSize={9}
                     fontWeight={700}
-                    fill={C_FACT}
+                    fill={C_CLOSE}
+                    opacity={r.closedPartial ? 0.55 : 1}
                   >
-                    {r.fact}
+                    {r.closed}
                   </text>
                 </>
               )}
@@ -391,13 +454,19 @@ export default function ForecastYoY() {
                       ? []
                       : [
                           "",
-                          `Факт: ${r.fact} (${signed(r.dev)} к реалистичному, ${signed(
+                          `Факт по встрече: ${r.fact} (${signed(r.dev)} к реалистичному, ${signed(
                             r.devPct * 100,
                             0
                           )}%)`,
                           ...(r.kind === "maturing"
                             ? ["Часть сделок ещё в работе — факт вырастет"]
                             : []),
+                        ]),
+                    ...(r.closed == null
+                      ? []
+                      : [
+                          `Закрыто в месяце: ${r.closed}` +
+                            (r.closedPartial ? " (месяц не закончился)" : ""),
                         ]),
                   ].join("\n")}
                 </title>
@@ -412,8 +481,12 @@ export default function ForecastYoY() {
             модель, реалистично
           </span>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--color-text-secondary,#757987)" }}>
+            <span style={{ width: 16, height: 3, borderRadius: 2, background: C_CLOSE }} />
+            закрыто в месяце
+          </span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--color-text-secondary,#757987)" }}>
             <span style={{ width: 16, height: 0, borderTop: `2px dashed ${C_FACT}` }} />
-            факт
+            факт по месяцу встречи
           </span>
           {Object.entries(KIND).map(([k, v]) => (
             <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--color-text-secondary,#757987)" }}>
@@ -427,7 +500,7 @@ export default function ForecastYoY() {
       {/* Таблица */}
       <div style={card}>
         <div style={{ overflowX: "auto" }}>
-          <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 760 }}>
+          <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 900 }}>
             <thead>
               <tr>
                 <th style={th2}>Месяц</th>
@@ -437,8 +510,9 @@ export default function ForecastYoY() {
                 <th style={{ ...th2, textAlign: "center" }}>Пессим.</th>
                 <th style={{ ...th2, textAlign: "center" }}>Реалист.</th>
                 <th style={{ ...th2, textAlign: "center" }}>Оптим.</th>
-                <th style={{ ...th2, textAlign: "center" }}>Факт</th>
+                <th style={{ ...th2, textAlign: "center" }}>Факт по встрече</th>
                 <th style={{ ...th2, textAlign: "center" }}>Откл. от модели</th>
+                <th style={{ ...th2, textAlign: "center" }}>Закрыто в месяце</th>
               </tr>
             </thead>
             <tbody>
@@ -482,6 +556,21 @@ export default function ForecastYoY() {
                       </>
                     )}
                   </td>
+                  <td
+                    style={{
+                      ...td2,
+                      textAlign: "center",
+                      fontWeight: 700,
+                      whiteSpace: "nowrap",
+                      color: r.closed == null ? "var(--color-text-tertiary,#9AA1AF)" : C_CLOSE,
+                      opacity: r.closedPartial ? 0.7 : 1,
+                    }}
+                  >
+                    {r.closed == null ? "—" : r.closed}
+                    {r.closedPartial && (
+                      <div style={{ fontSize: 10, fontWeight: 400, opacity: 0.85 }}>месяц не закончен</div>
+                    )}
+                  </td>
                 </tr>
               ))}
               <tr style={{ background: "var(--color-background-secondary,#E8EBEE)" }}>
@@ -502,12 +591,14 @@ export default function ForecastYoY() {
                   style={{
                     ...td2,
                     textAlign: "center",
-                    fontWeight: 700,
                     whiteSpace: "nowrap",
                     color: "var(--color-text-secondary,#757987)",
                   }}
                 >
-                  закрыто на сегодня
+                  набрано на сегодня
+                </td>
+                <td style={{ ...td2, textAlign: "center", fontWeight: 700, color: C_CLOSE }}>
+                  {closes.ytd}
                 </td>
               </tr>
               <tr style={{ background: "var(--color-background-secondary,#E8EBEE)" }}>
@@ -517,7 +608,7 @@ export default function ForecastYoY() {
                 <td style={{ ...td2, textAlign: "center", fontWeight: 700 }}>{expected.lo.toFixed(0)}</td>
                 <td style={{ ...td2, textAlign: "center", fontWeight: 700 }}>{expected.mid.toFixed(0)}</td>
                 <td style={{ ...td2, textAlign: "center", fontWeight: 700 }}>{expected.hi.toFixed(0)}</td>
-                <td style={{ ...td2 }} colSpan={2} />
+                <td style={{ ...td2 }} colSpan={3} />
               </tr>
             </tbody>
           </table>
@@ -546,15 +637,26 @@ export default function ForecastYoY() {
           неполный и почти всегда ниже модели, это не промах прогноза. «Прогноз» — встречи ещё
           не состоялись и смоделированы.
           <br />
+          <b>Две колонки факта — это две разные нарезки одних и тех же сделок.</b> «Факт по
+          встрече» относит продажу к месяцу первичной встречи: так считается конверсия и так
+          устроена модель, но у последних {LAG} месяцев цифра занижена, потому что сделки ещё
+          не закрылись. «Закрыто в месяце» относит продажу к дате закрытия («Won time»): это
+          реальный результат месяца, он не зависит от дозревания, но с моделью помесячно не
+          сопоставим — в него попадают сделки со встреч прошлых месяцев и даже прошлого года.
+          Сравнивать «закрыто» имеет смысл год к году, а не со строкой модели.
+          <br />
           <b>Итог года.</b> «Модель» — что дала бы модель на всех 12 месяцах. «Ожидание» — факт
-          за дозревшие месяцы плюс модель за остальные; это рабочая оценка года.
+          за дозревшие месяцы плюс модель за остальные; это рабочая оценка года. Отдельно —
+          {" "}
+          {closes.ytd} сделок, закрытых с начала {YEAR} года ({fmL(closes.partial)} ещё идёт).
           <br />
           <b>Диапазон</b> — 95% доверительный интервал конверсии базового года (интервал
           Вильсона), применённый к горячим и холодным отдельно. Неопределённость самого потока
           встреч в диапазон не заложена.
           <br />
-          <b>Источник.</b> Встречи и продажи по консультантам (те же данные, что в аналитике),
-          чтобы конверсия и объём считались по одной и той же выборке.
+          <b>Источник.</b> Модель и «факт по встрече» — данные по консультантам, те же, что в
+          аналитике, чтобы конверсия и объём считались по одной выборке. «Закрыто в месяце» —
+          выгрузка сделок из Pipedrive (стадия WON, поле «Won time»), период с янв {YEAR - 1}.
         </div>
       </div>
     </div>
