@@ -281,6 +281,37 @@ export default function ConvChart({ data, filter, byQuarter: byQuarterProp, titl
               )
             )}
           </g>
+          {/* Прозрачные полосы-мишени: тултип показывается при наведении на
+              любое место колонки, а не только точно на точку */}
+          {periods.map((pk, i) => {
+            const half = periods.length > 1 ? (x(1) - x(0)) / 2 : innerW / 2;
+            const left = Math.max(padL, x(i) - half);
+            const right = Math.min(W - padR, x(i) + half);
+            const t = totalSeries[i];
+            const fmtRow = (label, v) =>
+              `${label}: ${v.meetings} встр → ${v.sales} ${salesLabel}` +
+              (v.conv == null ? "" : ` (${v.conv.toFixed(1)}%)`);
+            const lines = [
+              byQuarter ? fmQ(pk) : fmL(pk),
+              fmtRow("Всего", t),
+              ...TEAMS.filter((tt) => activeTeams[tt]).map((tt) =>
+                fmtRow(tt, teamSeries[tt][i])
+              ),
+            ];
+            return (
+              <rect
+                key={`hit-${pk}`}
+                className="chart-hit"
+                x={left}
+                y={padT}
+                width={Math.max(0, right - left)}
+                height={innerH}
+              >
+                <title>{lines.join("\n")}</title>
+              </rect>
+            );
+          })}
+
         </svg>
       )}
 

@@ -185,6 +185,16 @@ body {
 /* Числа в таблицах и KPI выравниваются по разрядам */
 table, .tabular { font-variant-numeric: tabular-nums; }
 
+/* Полоса-мишень на графике: невидима, подсвечивает колонку при наведении */
+.chart-hit {
+  fill: transparent;
+  cursor: default;
+}
+.chart-hit:hover {
+  fill: var(--color-text-primary);
+  fill-opacity: 0.05;
+}
+
 /* Пастельная шкала оценок: значение процента передаётся через --p */
 .ramp-cell {
   background: hsl(calc(var(--ramp-h0) + (var(--ramp-h1) - var(--ramp-h0)) * var(--p) / 100)

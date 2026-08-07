@@ -373,17 +373,6 @@ export default function ExperimentTab() {
 
   return (
     <div>
-      <div style={{ ...card, marginBottom: 14, borderLeft: "3px solid var(--chart-3,#FCA92F)" }}>
-        <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-0.01em" }}>
-          Рейтинг консультантов · эксперимент
-        </div>
-        <div style={{ fontSize: 12.5, color: "var(--color-text-secondary,#757987)", marginTop: 4 }}>
-          Три метрики рядом за общий период: конверсия в продажу, конверсия в повторную встречу и
-          качество первой встречи. В рейтинг попадают только консультанты, у которых достаточно
-          наблюдений — иначе одна встреча с одной продажей даёт «100%».
-        </div>
-      </div>
-
       {/* Общие контролы: период + порог выборки */}
       <div
         style={{
