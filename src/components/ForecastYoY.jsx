@@ -24,8 +24,13 @@ const YEAR = Number(LAST_MEETING_MONTH.slice(0, 4));
 
 const CLOSED = Object.fromEntries(WON_BY_MONTH.map((r) => [r.month, r.won]));
 
-// Накопленная доля закрытий: сколько сделок когорты закроется за k месяцев
-const LAG_CUM = WIN_LAG.map((_, i) => WIN_LAG.slice(0, i + 1).reduce((a, b) => a + b, 0));
+const CHANNELS = ["hot", "cold"];
+const LAG_LEN = Math.max(...CHANNELS.map((t) => WIN_LAG[t].length));
+
+// Накопленная доля закрытий по каналу: сколько сделок когорты закроется за k месяцев
+const LAG_CUM = Object.fromEntries(
+  CHANNELS.map((t) => [t, WIN_LAG[t].map((_, i) => WIN_LAG[t].slice(0, i + 1).reduce((a, b) => a + b, 0))])
+);
 
 // ── Календарные хелперы ─────────────────────────────────────────────────────
 const monthDiff = (a, b) =>
@@ -49,11 +54,12 @@ const prevYear = (m) => shift(m, 12);
 const pct = (v) => `${(v * 100).toFixed(1)}%`;
 const signed = (v, digits = 1) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(digits)}`;
 
-// Какая доля сделок когорты месяца m уже успела закрыться к моменту выгрузки
-function maturity(m) {
+// Какая доля сделок канала за месяц m уже успела закрыться к моменту выгрузки
+function maturity(m, type) {
   const age = monthDiff(m, CLOSE_OBS_MONTH);
   if (age < 0) return 0;
-  return age >= LAG_CUM.length ? 1 : LAG_CUM[age];
+  const cum = LAG_CUM[type];
+  return age >= cum.length ? 1 : cum[age];
 }
 
 // Встречи/продажи за месяц по срезу
@@ -77,8 +83,10 @@ function wilson(successes, n) {
 }
 
 // ── Модель ──────────────────────────────────────────────────────────────────
-// Продажи месяца T = сумма по прошлым месяцам M: встречи(M) × конверсия ×
-// доля сделок, закрывающихся ровно через (T − M) месяцев.
+// Продажи месяца T = сумма по прошлым месяцам M и по каналам:
+//   встречи(M, канал) × конверсия(канал) × доля лага(канал, T − M)
+// У горячих и холодных свой цикл сделки, поэтому свёртка идёт по каналам
+// раздельно и складывается только на выходе.
 function buildModel() {
   // 1. Конверсия. Берём когорты, успевшие дозреть, и всё равно правим на
   //    остаточную незрелость: наблюдаемые продажи / зрелость когорты.
@@ -89,7 +97,7 @@ function buildModel() {
     for (const m of base) {
       const a = agg(m, type);
       meetings += a.m;
-      sales += a.s / maturity(m);
+      sales += a.s / maturity(m, type);
     }
     return wilson(sales, meetings);
   };
@@ -115,22 +123,25 @@ function buildModel() {
 
   // 4. Свёртка: продажи месяца T
   const closesOf = (T) => {
-    const out = { lo: 0, mid: 0, hi: 0, ready: 0, fromKnown: 0, fromModel: 0 };
-    WIN_LAG.forEach((w, k) => {
+    const out = { lo: 0, mid: 0, hi: 0, fromKnown: 0, fromModel: 0, byChannel: { hot: 0, cold: 0 } };
+    for (let k = 0; k < LAG_LEN; k++) {
       const m = shift(T, k);
-      const hot = meetingsOf(m, "hot");
-      const cold = meetingsOf(m, "cold");
-      out.lo += w * (hot.n * conv.hot.lo + cold.n * conv.cold.lo);
-      out.mid += w * (hot.n * conv.hot.p + cold.n * conv.cold.p);
-      out.hi += w * (hot.n * conv.hot.hi + cold.n * conv.cold.hi);
-      const part = w * (hot.n * conv.hot.p + cold.n * conv.cold.p);
-      if (hot.known) {
-        out.ready += w;
-        out.fromKnown += part;
-      } else {
-        out.fromModel += part;
+      for (const type of CHANNELS) {
+        const w = WIN_LAG[type][k] || 0;
+        if (!w) continue;
+        const mt = meetingsOf(m, type);
+        const part = w * mt.n * conv[type].p;
+        out.lo += w * mt.n * conv[type].lo;
+        out.mid += part;
+        out.hi += w * mt.n * conv[type].hi;
+        out.byChannel[type] += part;
+        if (mt.known) out.fromKnown += part;
+        else out.fromModel += part;
       }
-    });
+    }
+    // Доля прогноза, обеспеченная уже прошедшими встречами. Считается по объёму,
+    // а не по сумме весов: у каналов разные ядра и разный вклад в продажи.
+    out.ready = out.mid ? out.fromKnown / out.mid : 0;
     return out;
   };
 
@@ -255,10 +266,15 @@ export default function ForecastYoY() {
         </div>
         <div style={kpiCard}>
           <div style={kpiLabel}>Цикл сделки</div>
-          <div style={kpiValue}>{WIN_LAG_META.meanMonths.toFixed(1)} мес</div>
+          <div style={kpiValue}>
+            {WIN_LAG_META.hot.meanMonths.toFixed(1)}
+            <span style={{ color: "var(--color-text-tertiary,#6B7787)", fontSize: 15 }}> / </span>
+            {WIN_LAG_META.cold.meanMonths.toFixed(1)} мес
+          </div>
           <div style={{ fontSize: 11, color: "var(--color-text-secondary,#757987)" }}>
-            медиана {WIN_LAG_META.medianMonths} · {(WIN_LAG_META.closedBy6 * 100).toFixed(0)}%
-            закрывается за 6 мес
+            горячие / холодные · за 6 мес закрывается{" "}
+            {(WIN_LAG_META.hot.closedBy6 * 100).toFixed(0)}% и{" "}
+            {(WIN_LAG_META.cold.closedBy6 * 100).toFixed(0)}%
           </div>
         </div>
         <div style={kpiCard}>
@@ -405,6 +421,7 @@ export default function ForecastYoY() {
                     `Реалистично:  ${r.mid.toFixed(1)}`,
                     `Пессимистично: ${r.lo.toFixed(1)}`,
                     "",
+                    `С горячих: ${r.byChannel.hot.toFixed(1)} · с холодных: ${r.byChannel.cold.toFixed(1)}`,
                     `Из встреч, которые уже прошли: ${(r.ready * 100).toFixed(0)}% прогноза` +
                       (r.ready < 0.999 ? ` (${r.fromKnown.toFixed(1)} из ${r.mid.toFixed(1)})` : ""),
                     ...(r.closed == null
@@ -555,24 +572,54 @@ export default function ForecastYoY() {
 
         <div style={{ fontSize: 11, color: "var(--color-text-secondary,#757987)", marginTop: 12, lineHeight: 1.6 }}>
           <b>Как считается прогноз на месяц.</b> Продажи месяца T = сумма по всем предыдущим
-          месяцам M: встречи(M) × конверсия × доля сделок, закрывающихся ровно через (T − M)
-          месяцев. То есть месяц наполняется сделками со встреч, которые прошли раньше, а не
-          своими собственными.
+          месяцам M и по обоим каналам: встречи(M, канал) × конверсия канала × доля сделок
+          канала, закрывающихся ровно через (T − M) месяцев. То есть месяц наполняется сделками
+          со встреч, которые прошли раньше, а не своими собственными.
           <br />
-          <b>Цикл сделки.</b> Распределение лага «первая встреча → закрытие» посчитано по{" "}
-          {WIN_LAG_META.deals} закрытым сделкам, созданным достаточно давно, чтобы почти все
-          успели дозреть. Средний цикл {WIN_LAG_META.meanMonths.toFixed(1)} мес, медиана{" "}
-          {WIN_LAG_META.medianMonths},{" "}
-          {(WIN_LAG_META.closedBy6 * 100).toFixed(0)}% закрывается за 6 месяцев. По месяцам:{" "}
-          {WIN_LAG.map((w, k) => `${k} мес — ${(w * 100).toFixed(0)}%`).join(", ")}. Дата
-          создания сделки взята как прокси даты первичной встречи: на сделках, где известны обе,
-          расхождение медианно 0.4 месяца.
+          <b>Цикл сделки — свой у каждого канала.</b> Ряд показывает, какая доля продаж канала
+          закрывается через k месяцев после первичной встречи; каждый ряд в сумме даёт 100%,
+          то есть все потенциальные продажи канала с уже учтённой конверсией.
+          <table style={{ borderCollapse: "collapse", margin: "6px 0 2px", fontSize: 11 }}>
+            <tbody>
+              <tr>
+                <td style={{ padding: "1px 8px 1px 0", color: "var(--color-text-tertiary,#9AA1AF)" }}>
+                  мес после встречи
+                </td>
+                {WIN_LAG.hot.map((_, k) => (
+                  <td key={k} style={{ padding: "1px 7px", textAlign: "right", color: "var(--color-text-tertiary,#9AA1AF)" }}>
+                    {k}
+                  </td>
+                ))}
+              </tr>
+              <tr>
+                <td style={{ padding: "1px 8px 1px 0" }}>горячие</td>
+                {WIN_LAG.hot.map((w, k) => (
+                  <td key={k} style={{ padding: "1px 7px", textAlign: "right" }}>
+                    {(w * 100).toFixed(1)}
+                  </td>
+                ))}
+              </tr>
+              <tr>
+                <td style={{ padding: "1px 8px 1px 0" }}>холодные</td>
+                {WIN_LAG.cold.map((w, k) => (
+                  <td key={k} style={{ padding: "1px 7px", textAlign: "right" }}>
+                    {(w * 100).toFixed(1)}
+                  </td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
+          Средний цикл {WIN_LAG_META.hot.meanMonths.toFixed(2)} месяца по горячим и{" "}
+          {WIN_LAG_META.cold.meanMonths.toFixed(2)} по холодным. Для сверки: по паре «сделка
+          создана → закрыта» из той же выгрузки средний лаг выходит 3.2 месяца — расхождение
+          возможно из-за того, что дата создания сделки не совпадает с датой встречи, и из-за
+          усечения свежих когорт.
           <br />
           <b>Конверсия</b> считается по когортам возрастом от {MIN_MATURITY_AGE} месяцев (
           {fmL(M.base[0])}–{fmL(M.base[M.base.length - 1])}) и дополнительно правится на
-          остаточную незрелость: наблюдаемые продажи делятся на долю сделок, успевших закрыться
-          к дате выгрузки. Без этой поправки конверсия занижается, а с ней — горячие{" "}
-          {pct(conv.hot.p)}, холодные {pct(conv.cold.p)}.
+          остаточную незрелость: наблюдаемые продажи делятся на долю сделок канала, успевших
+          закрыться к дате выгрузки — по тому же распределению лага. Без этой поправки конверсия
+          занижается, а с ней — горячие {pct(conv.hot.p)}, холодные {pct(conv.cold.p)}.
           <br />
           <b>Встречи.</b> До {fmL(LAST_MEETING_MONTH)} включительно — факт. Дальше: встречи того
           же месяца год назад × рост за последние {YOY_WINDOW} месяца ({fmL(M.recent[0])}–
@@ -588,17 +635,25 @@ export default function ForecastYoY() {
           <br />
           <b>Проверка на факте.</b> За {fmL(check.from)}–{fmL(check.to)} модель дала{" "}
           {check.model.toFixed(0)} продаж, фактически закрылось {check.fact} — факт выше модели
-          на {Math.abs(check.devPct * 100).toFixed(0)}%. На {YEAR - 1} расхождения нет, так что
-          это скорее удачное полугодие, чем систематический сдвиг, но прогноз на остаток года
-          стоит читать как нижнюю границу. Помесячные отклонения ещё больше: сделки приходят
-          рывками, а свёртка по определению даёт гладкую линию.
+          на {Math.abs(check.devPct * 100).toFixed(0)}%. На втором полугодии {YEAR - 1} модель
+          попадает точно: 55.8 против 54 закрытий у консультантов, которые есть в отчётах по
+          встречам. Значит систематического сдвига нет и недобор {YEAR} — скорее сильное
+          полугодие, чем ошибка модели; но прогноз на остаток года разумно читать как нижнюю
+          границу. Помесячные отклонения ещё больше: сделки приходят рывками, а свёртка по
+          определению даёт гладкую линию.
           <br />
           <b>Диапазон</b> — 95% доверительный интервал конверсии (интервал Вильсона), отдельно по
           горячим и холодным. Неопределённость потока встреч и самого цикла сделки в него не
           заложена, поэтому реальный разброс шире нарисованного.
           <br />
-          <b>Источник.</b> Встречи — отчёты по консультантам, те же, что в аналитике. Закрытия и
-          цикл сделки — выгрузка сделок из Pipedrive (стадия WON, поля «Won time» и «Deal created»).
+          <b>Источник.</b> Встречи — отчёты по консультантам, те же, что в аналитике. Закрытия —
+          выгрузка сделок из Pipedrive (стадия WON, поле «Won time»). Распределение цикла
+          сделки по каналам задано командой продаж.
+          <br />
+          <b>Чего в модели нет.</b> Встречи берутся только по консультантам из отчётов, поэтому
+          сделки владельцев вне текущего состава SG модель не воспроизводит — в {YEAR - 1} это
+          заметная часть закрытий, в {YEAR} их всего три. Ещё модель не знает про размер сделки:
+          считаются штуки, не деньги.
         </div>
       </div>
     </div>
