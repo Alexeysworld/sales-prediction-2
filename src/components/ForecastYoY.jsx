@@ -1,107 +1,151 @@
 import { card, th2, td2, kpiCard, kpiLabel, kpiValue } from "../utils/styles.js";
-import { C_POS, C_NEG, TC } from "../constants.js";
+import { C_POS, C_NEG } from "../constants.js";
 import { gM, gS } from "../utils/convUtils.js";
 import { actMo, fmL } from "../utils/dateUtils.js";
 import { D } from "../data/consultants.js";
-import { SF_MONTHS, WON_BY_MONTH } from "../data/salesFact.js";
+import {
+  SF_MONTHS,
+  WON_BY_MONTH,
+  WIN_LAG,
+  WIN_LAG_META,
+  CLOSE_OBS_MONTH,
+} from "../data/salesFact.js";
 
 // ── Параметры модели ────────────────────────────────────────────────────────
-const LAG = 3;          // месяцев дозревания сделки
-const BASE_LEN = 12;    // длина базового окна для конверсии
-const YOY_WINDOW = 3;   // по скольким последним месяцам считаем рост г/г
-const Z = 1.96;         // 95% доверительный интервал
+const MIN_MATURITY_AGE = 6; // с какого возраста когорта считается дозревшей для базы конверсии
+const YOY_WINDOW = 3;       // по скольким последним месяцам считаем рост встреч г/г
+const Z = 1.96;             // 95% доверительный интервал
 
-const C_FACT = "#14B8A6"; // факт продаж (месяц закрытия сделки)
+const C_FACT = "#14B8A6"; // факт: закрытые сделки
 
 const MONTHS_ALL = actMo(D, "all");
-const LAST = MONTHS_ALL[MONTHS_ALL.length - 1];
-const YEAR = Number(LAST.slice(0, 4));
+const LAST_MEETING_MONTH = MONTHS_ALL[MONTHS_ALL.length - 1];
+const YEAR = Number(LAST_MEETING_MONTH.slice(0, 4));
 
-// Закрытые сделки по месяцу закрытия (`Won time`)
 const CLOSED = Object.fromEntries(WON_BY_MONTH.map((r) => [r.month, r.won]));
-// Последний месяц выгрузки — это месяц, в который её сделали, значит он неполный
-const PARTIAL_CLOSE = SF_MONTHS[SF_MONTHS.length - 1];
 
-// Агрегат встреч/продаж по списку месяцев и срезу
-function agg(monthKeys, type) {
+// Накопленная доля закрытий: сколько сделок когорты закроется за k месяцев
+const LAG_CUM = WIN_LAG.map((_, i) => WIN_LAG.slice(0, i + 1).reduce((a, b) => a + b, 0));
+
+// ── Календарные хелперы ─────────────────────────────────────────────────────
+const monthDiff = (a, b) =>
+  (Number(b.slice(0, 4)) - Number(a.slice(0, 4))) * 12 + (Number(b.slice(5)) - Number(a.slice(5)));
+
+const shift = (m, k) => {
+  let y = Number(m.slice(0, 4));
+  let mo = Number(m.slice(5)) - k;
+  while (mo < 1) {
+    mo += 12;
+    y -= 1;
+  }
+  while (mo > 12) {
+    mo -= 12;
+    y += 1;
+  }
+  return `${y}-${String(mo).padStart(2, "0")}`;
+};
+
+const prevYear = (m) => shift(m, 12);
+const pct = (v) => `${(v * 100).toFixed(1)}%`;
+const signed = (v, digits = 1) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(digits)}`;
+
+// Какая доля сделок когорты месяца m уже успела закрыться к моменту выгрузки
+function maturity(m) {
+  const age = monthDiff(m, CLOSE_OBS_MONTH);
+  if (age < 0) return 0;
+  return age >= LAG_CUM.length ? 1 : LAG_CUM[age];
+}
+
+// Встречи/продажи за месяц по срезу
+function agg(monthKey, type) {
   let m = 0;
   let s = 0;
   for (const d of D) {
-    for (const k of monthKeys) {
-      m += gM(d, k, type);
-      s += gS(d, k, type);
-    }
+    m += gM(d, monthKey, type);
+    s += gS(d, monthKey, type);
   }
   return { m, s };
 }
 
-// Доверительный интервал доли (Wilson) — даёт диапазон конверсии
 function wilson(successes, n) {
   if (!n) return { p: 0, lo: 0, hi: 0 };
   const p = successes / n;
   const denom = 1 + (Z * Z) / n;
   const centre = (p + (Z * Z) / (2 * n)) / denom;
-  const margin =
-    (Z * Math.sqrt((p * (1 - p)) / n + (Z * Z) / (4 * n * n))) / denom;
+  const margin = (Z * Math.sqrt((p * (1 - p)) / n + (Z * Z) / (4 * n * n))) / denom;
   return { p, lo: Math.max(0, centre - margin), hi: centre + margin };
 }
 
-const prevYear = (m) => `${Number(m.slice(0, 4)) - 1}-${m.slice(5)}`;
-const pct = (v) => `${(v * 100).toFixed(1)}%`;
-const signed = (v, digits = 1) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(digits)}`;
-
 // ── Модель ──────────────────────────────────────────────────────────────────
+// Продажи месяца T = сумма по прошлым месяцам M: встречи(M) × конверсия ×
+// доля сделок, закрывающихся ровно через (T − M) месяцев.
 function buildModel() {
-  // База конверсии: 12 месяцев до последних 6 (там сделки уже дозрели)
-  const base = MONTHS_ALL.slice(-(6 + BASE_LEN), -6);
-  const bh = agg(base, "hot");
-  const bc = agg(base, "cold");
-  const conv = { hot: wilson(bh.s, bh.m), cold: wilson(bc.s, bc.m) };
+  // 1. Конверсия. Берём когорты, успевшие дозреть, и всё равно правим на
+  //    остаточную незрелость: наблюдаемые продажи / зрелость когорты.
+  const base = MONTHS_ALL.filter((m) => monthDiff(m, CLOSE_OBS_MONTH) >= MIN_MATURITY_AGE);
+  const convOf = (type) => {
+    let meetings = 0;
+    let sales = 0;
+    for (const m of base) {
+      const a = agg(m, type);
+      meetings += a.m;
+      sales += a.s / maturity(m);
+    }
+    return wilson(sales, meetings);
+  };
+  const conv = { hot: convOf("hot"), cold: convOf("cold") };
 
-  // Рост встреч год к году по последним 3 месяцам
+  // 2. Рост встреч год к году — им продлеваем поток встреч в будущее
   const recent = MONTHS_ALL.slice(-YOY_WINDOW);
-  const yearAgo = recent.map(prevYear);
   const growthOf = (type) => {
-    const now = agg(recent, type).m;
-    const before = agg(yearAgo, type).m;
+    const now = recent.reduce((a, m) => a + agg(m, type).m, 0);
+    const before = recent.reduce((a, m) => a + agg(prevYear(m), type).m, 0);
     return { now, before, k: before ? now / before : 1 };
   };
   const growth = { hot: growthOf("hot"), cold: growthOf("cold") };
 
-  // Помесячно за год прогноза
+  // 3. Поток встреч: факт там, где месяц прошёл, иначе год назад × рост
+  const meetingsOf = (m, type) => {
+    if (MONTHS_ALL.includes(m)) return { n: agg(m, type).m, known: true };
+    const ly = prevYear(m);
+    const fallback = recent.reduce((a, k) => a + agg(k, type).m, 0) / YOY_WINDOW;
+    const baseN = MONTHS_ALL.includes(ly) ? agg(ly, type).m : fallback;
+    return { n: baseN * growth[type].k, known: false };
+  };
+
+  // 4. Свёртка: продажи месяца T
+  const closesOf = (T) => {
+    const out = { lo: 0, mid: 0, hi: 0, ready: 0, fromKnown: 0, fromModel: 0 };
+    WIN_LAG.forEach((w, k) => {
+      const m = shift(T, k);
+      const hot = meetingsOf(m, "hot");
+      const cold = meetingsOf(m, "cold");
+      out.lo += w * (hot.n * conv.hot.lo + cold.n * conv.cold.lo);
+      out.mid += w * (hot.n * conv.hot.p + cold.n * conv.cold.p);
+      out.hi += w * (hot.n * conv.hot.hi + cold.n * conv.cold.hi);
+      const part = w * (hot.n * conv.hot.p + cold.n * conv.cold.p);
+      if (hot.known) {
+        out.ready += w;
+        out.fromKnown += part;
+      } else {
+        out.fromModel += part;
+      }
+    });
+    return out;
+  };
+
   const rows = [];
   for (let i = 1; i <= 12; i++) {
     const key = `${YEAR}-${String(i).padStart(2, "0")}`;
-    const known = MONTHS_ALL.includes(key);
-    let hotM;
-    let coldM;
-
-    if (known) {
-      hotM = agg([key], "hot").m;
-      coldM = agg([key], "cold").m;
-    } else {
-      // Прогноз встреч: столько же, сколько год назад, с поправкой на рост
-      const ly = prevYear(key);
-      const hasLY = MONTHS_ALL.includes(ly);
-      const fallback = (type) => agg(MONTHS_ALL.slice(-YOY_WINDOW), type).m / YOY_WINDOW;
-      hotM = (hasLY ? agg([ly], "hot").m : fallback("hot")) * growth.hot.k;
-      coldM = (hasLY ? agg([ly], "cold").m : fallback("cold")) * growth.cold.k;
-    }
-
-    const mid = hotM * conv.hot.p + coldM * conv.cold.p;
-    const lo = hotM * conv.hot.lo + coldM * conv.cold.lo;
-    const hi = hotM * conv.hot.hi + coldM * conv.cold.hi;
-
+    const c = closesOf(key);
     rows.push({
       key,
-      kind: known ? "actual" : "forecast", // про встречи, а не про продажи
-      hotM,
-      coldM,
-      lo,
-      mid,
-      hi,
+      ...c,
       closed: key in CLOSED ? CLOSED[key] : null,
-      closedPartial: key === PARTIAL_CLOSE,
+      // месяц выгрузки ещё идёт, его факт неполный
+      partial: key === CLOSE_OBS_MONTH,
+      // месяц завершён: факт финальный
+      done: key in CLOSED && key !== CLOSE_OBS_MONTH,
     });
   }
 
@@ -110,37 +154,47 @@ function buildModel() {
     { lo: 0, mid: 0, hi: 0 }
   );
 
-  // Закрытые сделки: всего за год и сравнение с прошлым годом.
-  // Сравниваем только по полным месяцам — месяц выгрузки недобран.
-  const closeMonths = SF_MONTHS.filter((m) => m.startsWith(String(YEAR)));
-  const fullMonths = closeMonths.filter((m) => m !== PARTIAL_CLOSE);
+  // Ожидание по году: факт за завершённые месяцы + модель за остальные.
+  // Обе части на одной оси — месяц закрытия сделки, поэтому складываются.
+  const expected = rows.reduce(
+    (a, r) =>
+      r.done
+        ? { lo: a.lo + r.closed, mid: a.mid + r.closed, hi: a.hi + r.closed }
+        : { lo: a.lo + r.lo, mid: a.mid + r.mid, hi: a.hi + r.hi },
+    { lo: 0, mid: 0, hi: 0 }
+  );
+
+  // Сверка модели с фактом на завершённых месяцах года
+  const done = rows.filter((r) => r.done);
+  const check = {
+    from: done[0]?.key,
+    to: done[done.length - 1]?.key,
+    fact: done.reduce((a, r) => a + r.closed, 0),
+    model: done.reduce((a, r) => a + r.mid, 0),
+  };
+  check.devPct = check.model ? check.fact / check.model - 1 : 0;
+
+  // Закрытия год к году по завершённым месяцам
+  const doneKeys = done.map((r) => r.key);
   const sumClosed = (ms) => ms.reduce((a, m) => a + (CLOSED[m] || 0), 0);
   const closes = {
-    ytd: sumClosed(closeMonths),
-    full: sumClosed(fullMonths),
-    fullPrev: sumClosed(fullMonths.map(prevYear)),
-    prevYearTotal: sumClosed(
-      SF_MONTHS.filter((m) => m.startsWith(String(YEAR - 1)))
-    ),
-    from: fullMonths[0],
-    to: fullMonths[fullMonths.length - 1],
-    partial: PARTIAL_CLOSE,
+    ytd: sumClosed(SF_MONTHS.filter((m) => m.startsWith(String(YEAR)))),
+    full: sumClosed(doneKeys),
+    fullPrev: sumClosed(doneKeys.map(prevYear)),
+    prevYearTotal: sumClosed(SF_MONTHS.filter((m) => m.startsWith(String(YEAR - 1)))),
+    from: doneKeys[0],
+    to: doneKeys[doneKeys.length - 1],
   };
   closes.k = closes.fullPrev ? closes.full / closes.fullPrev : 1;
 
-  return { base, conv, growth, recent, yearAgo, rows, model, closes };
+  return { base, conv, growth, recent, rows, model, expected, check, closes };
 }
-
-const KIND = {
-  actual: { label: "встречи прошли", color: C_POS },
-  forecast: { label: "прогноз встреч", color: TC.MS1 },
-};
 
 export default function ForecastYoY() {
   const M = buildModel();
-  const { conv, growth, rows, model, closes } = M;
+  const { conv, growth, rows, model, expected, check, closes } = M;
 
-  // ── График: модель штрихом, факт сплошной ────────────────────────────────
+  // ── График ────────────────────────────────────────────────────────────────
   const W = 920;
   const H = 300;
   const padL = 40;
@@ -171,7 +225,8 @@ export default function ForecastYoY() {
       ? "M" +
         rows.map((r, i) => (r.closed == null ? null : `${x(i)},${y(r.closed)}`)).filter(Boolean).join("L")
       : "";
-  const firstForecast = rows.findIndex((r) => r.kind === "forecast");
+  // с какого месяца часть встреч уже смоделирована
+  const firstPartial = rows.findIndex((r) => r.ready < 0.999);
 
   return (
     <div>
@@ -179,7 +234,7 @@ export default function ForecastYoY() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fit, minmax(196px, 1fr))",
           gap: 12,
           marginBottom: 14,
         }}
@@ -199,22 +254,28 @@ export default function ForecastYoY() {
           </div>
         </div>
         <div style={kpiCard}>
-          <div style={kpiLabel}>Закрыто сделок в {YEAR}</div>
+          <div style={kpiLabel}>Цикл сделки</div>
+          <div style={kpiValue}>{WIN_LAG_META.meanMonths.toFixed(1)} мес</div>
+          <div style={{ fontSize: 11, color: "var(--color-text-secondary,#757987)" }}>
+            медиана {WIN_LAG_META.medianMonths} · {(WIN_LAG_META.closedBy6 * 100).toFixed(0)}%
+            закрывается за 6 мес
+          </div>
+        </div>
+        <div style={kpiCard}>
+          <div style={kpiLabel}>Закрыто в {YEAR}</div>
           <div style={{ ...kpiValue, color: C_FACT }}>{closes.ytd}</div>
           <div style={{ fontSize: 11, color: "var(--color-text-secondary,#757987)" }}>
             {fmL(closes.from)}–{fmL(closes.to)}: {closes.full} против {closes.fullPrev} год назад{" "}
             <span style={{ color: closes.k >= 1 ? C_POS : C_NEG, fontWeight: 600 }}>
               ({signed((closes.k - 1) * 100, 0)}%)
             </span>
-            {" · "}
-            {fmL(closes.partial)} не закончен
           </div>
         </div>
         <div style={{ ...kpiCard, borderColor: C_POS, borderWidth: 2 }}>
-          <div style={kpiLabel}>Прогноз продаж {YEAR}</div>
-          <div style={kpiValue}>{model.mid.toFixed(0)}</div>
+          <div style={kpiLabel}>Продажи {YEAR} — итог</div>
+          <div style={kpiValue}>{expected.mid.toFixed(0)}</div>
           <div style={{ fontSize: 11, color: "var(--color-text-secondary,#757987)" }}>
-            диапазон {model.lo.toFixed(0)} – {model.hi.toFixed(0)} · в {YEAR - 1} закрыто{" "}
+            диапазон {expected.lo.toFixed(0)} – {expected.hi.toFixed(0)} · в {YEAR - 1} закрыто{" "}
             {closes.prevYearTotal}
           </div>
         </div>
@@ -223,11 +284,12 @@ export default function ForecastYoY() {
       {/* График */}
       <div style={card}>
         <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-0.01em" }}>
-          Продажи {YEAR}: прогноз и факт
+          Продажи {YEAR} по месяцам закрытия
         </div>
         <div style={{ fontSize: 12.5, color: "var(--color-text-secondary,#757987)", margin: "4px 0 12px" }}>
-          Штриховая линия — прогноз (реалистичный сценарий), полоса вокруг неё —
-          пессимистичный и оптимистичный. Сплошная линия — факт: сделки, закрытые в этом месяце.
+          Штриховая линия — прогноз: сколько сделок закроется в этом месяце по встречам
+          предыдущих месяцев, конверсии и циклу сделки. Полоса — пессимистичный и оптимистичный
+          сценарий. Сплошная линия — факт закрытий.
         </div>
         <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: "visible" }}>
           {yTicks.map((v) => (
@@ -247,13 +309,13 @@ export default function ForecastYoY() {
             </g>
           ))}
 
-          {/* Зона, где встречи ещё не состоялись и смоделированы */}
-          {firstForecast > 0 && (
+          {/* Зона, где часть встреч ещё не состоялась */}
+          {firstPartial > 0 && (
             <>
               <rect
-                x={x(firstForecast) - step / 2}
+                x={x(firstPartial) - step / 2}
                 y={padT}
-                width={W - padR - (x(firstForecast) - step / 2)}
+                width={W - padR - (x(firstPartial) - step / 2)}
                 height={innerH}
                 fill="var(--color-background-secondary,#E8EBEE)"
                 opacity={0.5}
@@ -266,13 +328,12 @@ export default function ForecastYoY() {
                 fill="var(--color-text-secondary,#757987)"
                 opacity={0.8}
               >
-                прогноз встреч →
+                часть встреч ещё не состоялась →
               </text>
             </>
           )}
 
           <path d={band} fill="var(--chart-area,rgba(86,214,127,.10))" stroke="none" />
-          {/* Прогноз — штрих */}
           <path
             d={midLine}
             fill="none"
@@ -280,7 +341,6 @@ export default function ForecastYoY() {
             strokeWidth={2.2}
             strokeDasharray="7,4"
           />
-          {/* Факт — сплошная */}
           {factLine && <path d={factLine} fill="none" stroke={C_FACT} strokeWidth={2.6} />}
 
           {rows.map((r, i) => (
@@ -289,9 +349,10 @@ export default function ForecastYoY() {
                 cx={x(i)}
                 cy={y(r.mid)}
                 r={3.2}
-                fill={KIND[r.kind].color}
+                fill="var(--color-text-primary,#292B32)"
                 stroke="var(--color-background-primary,#fff)"
                 strokeWidth={1.4}
+                opacity={r.ready < 0.999 ? 0.55 : 1}
               />
               <text
                 x={x(i)}
@@ -312,7 +373,7 @@ export default function ForecastYoY() {
                     fill={C_FACT}
                     stroke="var(--color-background-primary,#fff)"
                     strokeWidth={1.4}
-                    opacity={r.closedPartial ? 0.5 : 1}
+                    opacity={r.partial ? 0.5 : 1}
                   />
                   <text
                     x={x(i)}
@@ -321,7 +382,7 @@ export default function ForecastYoY() {
                     fontSize={9}
                     fontWeight={700}
                     fill={C_FACT}
-                    opacity={r.closedPartial ? 0.55 : 1}
+                    opacity={r.partial ? 0.55 : 1}
                   >
                     {r.closed}
                   </text>
@@ -339,19 +400,19 @@ export default function ForecastYoY() {
               <rect className="chart-hit" x={x(i) - step / 2} y={padT} width={step} height={innerH}>
                 <title>
                   {[
-                    `${fmL(r.key)} · ${KIND[r.kind].label}`,
-                    `Встречи: ${r.hotM.toFixed(0)} гор + ${r.coldM.toFixed(0)} хол` +
-                      (r.kind === "forecast" ? " (модель)" : ""),
-                    "",
+                    fmL(r.key),
                     `Оптимистично: ${r.hi.toFixed(1)}`,
                     `Реалистично:  ${r.mid.toFixed(1)}`,
                     `Пессимистично: ${r.lo.toFixed(1)}`,
+                    "",
+                    `Из встреч, которые уже прошли: ${(r.ready * 100).toFixed(0)}% прогноза` +
+                      (r.ready < 0.999 ? ` (${r.fromKnown.toFixed(1)} из ${r.mid.toFixed(1)})` : ""),
                     ...(r.closed == null
                       ? []
                       : [
                           "",
                           `Факт закрытий: ${r.closed}` +
-                            (r.closedPartial ? " (месяц не закончился)" : ""),
+                            (r.partial ? " (месяц не закончился)" : ` (${signed(r.closed - r.mid)})`),
                         ]),
                   ].join("\n")}
                 </title>
@@ -362,25 +423,13 @@ export default function ForecastYoY() {
 
         <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 8, fontSize: 12 }}>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--color-text-secondary,#757987)" }}>
-            <span
-              style={{
-                width: 16,
-                height: 0,
-                borderTop: "2px dashed var(--color-text-primary,#292B32)",
-              }}
-            />
+            <span style={{ width: 16, height: 0, borderTop: "2px dashed var(--color-text-primary,#292B32)" }} />
             прогноз, реалистично
           </span>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--color-text-secondary,#757987)" }}>
             <span style={{ width: 16, height: 3, borderRadius: 2, background: C_FACT }} />
-            факт: закрыто в месяце
+            факт закрытий
           </span>
-          {Object.entries(KIND).map(([k, v]) => (
-            <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--color-text-secondary,#757987)" }}>
-              <span style={{ width: 9, height: 9, borderRadius: 999, background: v.color }} />
-              {v.label}
-            </span>
-          ))}
         </div>
       </div>
 
@@ -391,36 +440,59 @@ export default function ForecastYoY() {
             <thead>
               <tr>
                 <th style={th2}>Месяц</th>
-                <th style={th2}>Встречи</th>
-                <th style={{ ...th2, textAlign: "center" }}>Гор.</th>
-                <th style={{ ...th2, textAlign: "center" }}>Хол.</th>
                 <th style={{ ...th2, textAlign: "center" }}>Пессим.</th>
                 <th style={{ ...th2, textAlign: "center" }}>Реалист.</th>
                 <th style={{ ...th2, textAlign: "center" }}>Оптим.</th>
+                <th style={{ ...th2, textAlign: "center" }}>Обеспечено прошедшими встречами</th>
                 <th style={{ ...th2, textAlign: "center" }}>Факт закрытий</th>
+                <th style={{ ...th2, textAlign: "center" }}>Откл.</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => (
                 <tr key={r.key}>
                   <td style={{ ...td2, fontWeight: 600, whiteSpace: "nowrap" }}>{fmL(r.key)}</td>
-                  <td style={{ ...td2, whiteSpace: "nowrap" }}>
-                    <span style={{ color: KIND[r.kind].color, fontWeight: 600, fontSize: 11.5 }}>
-                      {KIND[r.kind].label}
-                    </span>
-                  </td>
-                  <td style={{ ...td2, textAlign: "center", opacity: r.kind === "forecast" ? 0.65 : 1 }}>
-                    {r.hotM.toFixed(0)}
-                  </td>
-                  <td style={{ ...td2, textAlign: "center", opacity: r.kind === "forecast" ? 0.65 : 1 }}>
-                    {r.coldM.toFixed(0)}
-                  </td>
                   <td style={{ ...td2, textAlign: "center", color: "var(--color-text-secondary,#757987)" }}>
                     {r.lo.toFixed(1)}
                   </td>
                   <td style={{ ...td2, textAlign: "center", fontWeight: 700 }}>{r.mid.toFixed(1)}</td>
                   <td style={{ ...td2, textAlign: "center", color: "var(--color-text-secondary,#757987)" }}>
                     {r.hi.toFixed(1)}
+                  </td>
+                  <td style={{ ...td2, textAlign: "center" }}>
+                    <div
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        color:
+                          r.ready > 0.999
+                            ? C_POS
+                            : "var(--color-text-secondary,#757987)",
+                        fontWeight: r.ready > 0.999 ? 600 : 400,
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: 40,
+                          height: 5,
+                          borderRadius: 3,
+                          background: "var(--color-border-tertiary,#DFE3E8)",
+                          overflow: "hidden",
+                          display: "inline-block",
+                        }}
+                      >
+                        <span
+                          style={{
+                            display: "block",
+                            width: `${r.ready * 100}%`,
+                            height: "100%",
+                            background: r.ready > 0.999 ? C_POS : "var(--color-text-tertiary,#9AA1AF)",
+                          }}
+                        />
+                      </span>
+                      {(r.ready * 100).toFixed(0)}%
+                    </div>
                   </td>
                   <td
                     style={{
@@ -429,75 +501,104 @@ export default function ForecastYoY() {
                       fontWeight: 700,
                       whiteSpace: "nowrap",
                       color: r.closed == null ? "var(--color-text-tertiary,#9AA1AF)" : C_FACT,
-                      opacity: r.closedPartial ? 0.7 : 1,
+                      opacity: r.partial ? 0.7 : 1,
                     }}
                   >
                     {r.closed == null ? "—" : r.closed}
-                    {r.closedPartial && (
-                      <div style={{ fontSize: 10, fontWeight: 400, opacity: 0.85 }}>месяц не закончен</div>
+                    {r.partial && (
+                      <div style={{ fontSize: 10, fontWeight: 400, opacity: 0.85 }}>месяц идёт</div>
                     )}
+                  </td>
+                  <td
+                    style={{
+                      ...td2,
+                      textAlign: "center",
+                      whiteSpace: "nowrap",
+                      fontWeight: 600,
+                      color: !r.done
+                        ? "var(--color-text-tertiary,#9AA1AF)"
+                        : r.closed >= r.mid
+                          ? C_POS
+                          : C_NEG,
+                    }}
+                  >
+                    {r.done ? signed(r.closed - r.mid) : "—"}
                   </td>
                 </tr>
               ))}
               <tr style={{ background: "var(--color-background-secondary,#E8EBEE)" }}>
-                <td style={{ ...td2, fontWeight: 700 }} colSpan={2}>
-                  Итого {YEAR}
-                </td>
-                <td style={{ ...td2, textAlign: "center", fontWeight: 700 }}>
-                  {rows.reduce((a, r) => a + r.hotM, 0).toFixed(0)}
-                </td>
-                <td style={{ ...td2, textAlign: "center", fontWeight: 700 }}>
-                  {rows.reduce((a, r) => a + r.coldM, 0).toFixed(0)}
-                </td>
+                <td style={{ ...td2, fontWeight: 700 }}>Модель {YEAR}</td>
                 <td style={{ ...td2, textAlign: "center", fontWeight: 700 }}>{model.lo.toFixed(0)}</td>
                 <td style={{ ...td2, textAlign: "center", fontWeight: 700 }}>{model.mid.toFixed(0)}</td>
                 <td style={{ ...td2, textAlign: "center", fontWeight: 700 }}>{model.hi.toFixed(0)}</td>
+                <td style={{ ...td2 }} />
                 <td style={{ ...td2, textAlign: "center", fontWeight: 700, color: C_FACT }}>
                   {closes.ytd}
-                  <div
-                    style={{
-                      fontSize: 10,
-                      fontWeight: 400,
-                      color: "var(--color-text-secondary,#757987)",
-                    }}
-                  >
+                  <div style={{ fontSize: 10, fontWeight: 400, color: "var(--color-text-secondary,#757987)" }}>
                     на сегодня
                   </div>
                 </td>
+                <td style={{ ...td2 }} />
+              </tr>
+              <tr style={{ background: "var(--color-background-secondary,#E8EBEE)" }}>
+                <td style={{ ...td2, fontWeight: 700, whiteSpace: "nowrap" }}>
+                  Ожидание: факт по {fmL(check.to)} + модель
+                </td>
+                <td style={{ ...td2, textAlign: "center", fontWeight: 700 }}>{expected.lo.toFixed(0)}</td>
+                <td style={{ ...td2, textAlign: "center", fontWeight: 700 }}>{expected.mid.toFixed(0)}</td>
+                <td style={{ ...td2, textAlign: "center", fontWeight: 700 }}>{expected.hi.toFixed(0)}</td>
+                <td style={{ ...td2 }} colSpan={3} />
               </tr>
             </tbody>
           </table>
         </div>
 
         <div style={{ fontSize: 11, color: "var(--color-text-secondary,#757987)", marginTop: 12, lineHeight: 1.6 }}>
-          <b>Конверсия</b> берётся за 12 месяцев до последних шести — {fmL(M.base[0])}–
-          {fmL(M.base[M.base.length - 1])}: там сделки успели дозреть, поэтому конверсия не
-          занижена. Горячие {pct(conv.hot.p)}, холодные {pct(conv.cold.p)}.
+          <b>Как считается прогноз на месяц.</b> Продажи месяца T = сумма по всем предыдущим
+          месяцам M: встречи(M) × конверсия × доля сделок, закрывающихся ровно через (T − M)
+          месяцев. То есть месяц наполняется сделками со встреч, которые прошли раньше, а не
+          своими собственными.
           <br />
-          <b>Встречи.</b> За последние {YOY_WINDOW} месяца ({fmL(M.recent[0])}–
-          {fmL(M.recent[M.recent.length - 1])}) встреч стало{" "}
-          {growth.hot.k >= 1 ? "больше" : "меньше"} год к году на{" "}
-          {Math.abs((growth.hot.k - 1) * 100).toFixed(0)}% по горячим и{" "}
-          {Math.abs((growth.cold.k - 1) * 100).toFixed(0)}% по холодным. Этот коэффициент
-          применён к встречам того же месяца год назад: прогноз на месяц = встречи год назад ×
-          рост. «Встречи прошли» — цифра фактическая, «прогноз встреч» — смоделированная.
+          <b>Цикл сделки.</b> Распределение лага «первая встреча → закрытие» посчитано по{" "}
+          {WIN_LAG_META.deals} закрытым сделкам, созданным достаточно давно, чтобы почти все
+          успели дозреть. Средний цикл {WIN_LAG_META.meanMonths.toFixed(1)} мес, медиана{" "}
+          {WIN_LAG_META.medianMonths},{" "}
+          {(WIN_LAG_META.closedBy6 * 100).toFixed(0)}% закрывается за 6 месяцев. По месяцам:{" "}
+          {WIN_LAG.map((w, k) => `${k} мес — ${(w * 100).toFixed(0)}%`).join(", ")}. Дата
+          создания сделки взята как прокси даты первичной встречи: на сделках, где известны обе,
+          расхождение медианно 0.4 месяца.
           <br />
-          <b>Диапазон</b> — 95% доверительный интервал конверсии базового года (интервал
-          Вильсона), применённый к горячим и холодным отдельно. Неопределённость самого потока
-          встреч в диапазон не заложена.
+          <b>Конверсия</b> считается по когортам возрастом от {MIN_MATURITY_AGE} месяцев (
+          {fmL(M.base[0])}–{fmL(M.base[M.base.length - 1])}) и дополнительно правится на
+          остаточную незрелость: наблюдаемые продажи делятся на долю сделок, успевших закрыться
+          к дате выгрузки. Без этой поправки конверсия занижается, а с ней — горячие{" "}
+          {pct(conv.hot.p)}, холодные {pct(conv.cold.p)}.
           <br />
-          <b>Факт закрытий</b> — сделки по дате закрытия («Won time»). Месяц выгрузки показан
-          бледным: он ещё идёт и цифра доберётся.
+          <b>Встречи.</b> До {fmL(LAST_MEETING_MONTH)} включительно — факт. Дальше: встречи того
+          же месяца год назад × рост за последние {YOY_WINDOW} месяца ({fmL(M.recent[0])}–
+          {fmL(M.recent[M.recent.length - 1])}: горячие{" "}
+          {signed((growth.hot.k - 1) * 100, 0)}%, холодные {signed((growth.cold.k - 1) * 100, 0)}
+          %).
           <br />
-          <b>Помесячно прогноз и факт сдвинуты друг относительно друга.</b> Прогноз отвечает на
-          вопрос «сколько продаж принесут встречи этого месяца», а факт — «сколько сделок
-          закрылось в этом месяце»; между встречей и закрытием проходит около {LAG} месяцев, и в
-          факт попадают сделки со встреч прошлых месяцев и прошлого года. Сходятся эти две
-          величины на длинной дистанции: годовой итог с годовым итогом, тренд с трендом. Читать
-          разрыв в отдельном месяце как ошибку прогноза не стоит.
+          <b>Колонка «обеспечено прошедшими встречами»</b> показывает, какая доля прогноза месяца
+          опирается на встречи, которые уже состоялись. У ближайших месяцев она близка к 100% —
+          там прогноз почти детерминирован; к декабрю падает до{" "}
+          {(rows[11].ready * 100).toFixed(0)}%, потому что декабрьские закрытия придут в основном
+          со встреч, которых ещё не было.
           <br />
-          <b>Источник.</b> Прогноз — встречи и продажи по консультантам, те же данные, что в
-          аналитике. Факт — выгрузка сделок из Pipedrive (стадия WON), период с янв {YEAR - 1}.
+          <b>Проверка на факте.</b> За {fmL(check.from)}–{fmL(check.to)} модель дала{" "}
+          {check.model.toFixed(0)} продаж, фактически закрылось {check.fact} — факт выше модели
+          на {Math.abs(check.devPct * 100).toFixed(0)}%. На {YEAR - 1} расхождения нет, так что
+          это скорее удачное полугодие, чем систематический сдвиг, но прогноз на остаток года
+          стоит читать как нижнюю границу. Помесячные отклонения ещё больше: сделки приходят
+          рывками, а свёртка по определению даёт гладкую линию.
+          <br />
+          <b>Диапазон</b> — 95% доверительный интервал конверсии (интервал Вильсона), отдельно по
+          горячим и холодным. Неопределённость потока встреч и самого цикла сделки в него не
+          заложена, поэтому реальный разброс шире нарисованного.
+          <br />
+          <b>Источник.</b> Встречи — отчёты по консультантам, те же, что в аналитике. Закрытия и
+          цикл сделки — выгрузка сделок из Pipedrive (стадия WON, поля «Won time» и «Deal created»).
         </div>
       </div>
     </div>
