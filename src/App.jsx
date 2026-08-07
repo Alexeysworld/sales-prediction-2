@@ -6,7 +6,6 @@ import { SECOND_AS_D } from "./data/secondMeetings.js";
 import KPIs from "./components/KPIs.jsx";
 import ConvChart from "./components/ConvChart.jsx";
 import StatsTable from "./components/StatsTable.jsx";
-import PConvTable from "./components/PConvTable.jsx";
 import MeetingQualityTab from "./components/MeetingQualityTab.jsx";
 import ExperimentTab from "./components/ExperimentTab.jsx";
 import ForecastTab from "./components/ForecastTab.jsx";
@@ -14,7 +13,6 @@ import ForecastTab from "./components/ForecastTab.jsx";
 // Подвкладки аналитики
 const SUB_TABS = [
   { id: "dynamics", label: "Общая динамика" },
-  { id: "rating", label: "Рейтинг людей по конверсиям" },
   { id: "quality", label: "Качество первой встречи" },
   { id: "experiment", label: "✦ Рейтинг консультантов" },
 ];
@@ -26,7 +24,7 @@ const FILTERS = [
 ];
 
 // Подвкладки, к которым применим фильтр Все/Горячие/Холодные (продажи из встреч)
-const CONV_TABS = ["dynamics", "rating"];
+const CONV_TABS = ["dynamics"];
 
 export default function App() {
   const [topTab, setTopTab] = useState("analytics"); // analytics | forecast
@@ -36,6 +34,23 @@ export default function App() {
   const [byQuarter, setByQuarter] = useState(false);
   // Метрика «Общей динамики»: конверсия в продажу или во вторую встречу
   const [metric, setMetric] = useState("sales"); // sales | second
+  // Тема: тёмная по умолчанию, класс .light на <html> включает светлую
+  const [light, setLight] = useState(
+    () => typeof document !== "undefined" && document.documentElement.classList.contains("light")
+  );
+
+  function toggleTheme() {
+    const next = !light;
+    setLight(next);
+    if (typeof document !== "undefined") {
+      document.documentElement.classList.toggle("light", next);
+      try {
+        localStorage.setItem("theme", next ? "light" : "dark");
+      } catch {
+        /* приватный режим — просто не запоминаем выбор */
+      }
+    }
+  }
 
   const isSecond = metric === "second";
   // У конверсии во вторую встречу нет разреза «горячие/холодные»
@@ -114,9 +129,9 @@ export default function App() {
           </button>
         </div>
 
-        {showFilter && (
-          <div style={{ display: "flex", gap: 6 }}>
-            {FILTERS.map((f) => (
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {showFilter &&
+            FILTERS.map((f) => (
               <button
                 key={f.id}
                 style={pill(filter === f.id)}
@@ -125,8 +140,29 @@ export default function App() {
                 {f.label}
               </button>
             ))}
-          </div>
-        )}
+          <button
+            onClick={toggleTheme}
+            title={light ? "Тёмная тема" : "Светлая тема"}
+            aria-label={light ? "Включить тёмную тему" : "Включить светлую тему"}
+            style={{
+              marginLeft: 6,
+              width: 30,
+              height: 30,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 14,
+              lineHeight: 1,
+              cursor: "pointer",
+              borderRadius: 8,
+              border: "1px solid var(--color-border-tertiary,#DFE3E8)",
+              background: "transparent",
+              color: "var(--color-text-secondary,#757987)",
+            }}
+          >
+            {light ? "☾" : "☀"}
+          </button>
+        </div>
       </div>
 
       {/* Второй уровень — подвкладки в одну строку */}
@@ -213,7 +249,6 @@ export default function App() {
               />
             </>
           )}
-          {subTab === "rating" && <PConvTable data={D} filter={filter} />}
           {subTab === "quality" && <MeetingQualityTab />}
           {subTab === "experiment" && <ExperimentTab />}
         </>
