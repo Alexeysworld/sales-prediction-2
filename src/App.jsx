@@ -13,8 +13,8 @@ import ForecastYoY from "./components/ForecastYoY.jsx";
 // Подвкладки аналитики
 const SUB_TABS = [
   { id: "dynamics", label: "Общая динамика" },
+  { id: "experiment", label: "Рейтинг консультантов" },
   { id: "quality", label: "Качество первой встречи" },
-  { id: "experiment", label: "✦ Рейтинг консультантов" },
 ];
 
 const FILTERS = [
@@ -22,9 +22,6 @@ const FILTERS = [
   { id: "hot", label: "Горячие" },
   { id: "cold", label: "Холодные" },
 ];
-
-// Подвкладки, к которым применим фильтр Все/Горячие/Холодные (продажи из встреч)
-const CONV_TABS = ["dynamics"];
 
 export default function App() {
   const [topTab, setTopTab] = useState("analytics"); // analytics | forecast
@@ -79,9 +76,8 @@ export default function App() {
         note: undefined,
       };
 
-  // Фильтр виден только на вкладках конверсии
-  const showFilter =
-    topTab === "analytics" && CONV_TABS.includes(subTab) && !(subTab === "dynamics" && isSecond);
+  // У конверсии во вторую встречу нет разреза «горячие/холодные»
+  const showFilter = !isSecond;
 
   const topTabStyle = (active) => ({
     padding: "8px 4px",
@@ -129,16 +125,6 @@ export default function App() {
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          {showFilter &&
-            FILTERS.map((f) => (
-              <button
-                key={f.id}
-                style={pill(filter === f.id)}
-                onClick={() => setFilter(f.id)}
-              >
-                {f.label}
-              </button>
-            ))}
           <button
             onClick={toggleTheme}
             title={light ? "Тёмная тема" : "Светлая тема"}
@@ -211,6 +197,19 @@ export default function App() {
                 <button style={pill(isSecond)} onClick={() => setMetric("second")}>
                   Во 2-ю встречу
                 </button>
+                {showFilter && (
+                  <>
+                    <span style={{ width: 14 }} />
+                    <span style={{ fontSize: 12, color: "var(--color-text-secondary,#757987)", marginRight: 2 }}>
+                      Встречи:
+                    </span>
+                    {FILTERS.map((f) => (
+                      <button key={f.id} style={pill(filter === f.id)} onClick={() => setFilter(f.id)}>
+                        {f.label}
+                      </button>
+                    ))}
+                  </>
+                )}
                 <span style={{ width: 14 }} />
                 <span style={{ fontSize: 12, color: "var(--color-text-secondary,#757987)", marginRight: 2 }}>
                   Разрез:
