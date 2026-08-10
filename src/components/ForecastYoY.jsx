@@ -1,5 +1,5 @@
 import { card, th2, td2, kpiCard, kpiLabel, kpiValue } from "../utils/styles.js";
-import { C_POS, C_NEG } from "../constants.js";
+import { C_POS, C_NEG, TC } from "../constants.js";
 import { gM, gS } from "../utils/convUtils.js";
 import { actMo, fmL } from "../utils/dateUtils.js";
 import { D } from "../data/consultants.js";
@@ -17,6 +17,7 @@ const YOY_WINDOW = 3;       // по скольким последним меся
 const Z = 1.96;             // 95% доверительный интервал
 
 const C_FACT = "#14B8A6"; // факт: закрытые сделки
+const C_MEET = TC.MS1;    // столбцы встреч (вторая ось)
 
 const MONTHS_ALL = actMo(D, "all");
 const LAST_MEETING_MONTH = MONTHS_ALL[MONTHS_ALL.length - 1];
@@ -154,6 +155,20 @@ function buildModel() {
     return out;
   };
 
+  // Встречи месяца и продажи, которые они дадут за весь цикл.
+  // Σ веса лага = 1, поэтому выход когорты = встречи × конверсия, без свёртки.
+  const cohortOf = (m) => {
+    const hot = meetingsOf(m, "hot");
+    const cold = meetingsOf(m, "cold");
+    return {
+      hotM: hot.n,
+      coldM: cold.n,
+      totalM: hot.n + cold.n,
+      meetKnown: hot.known,
+      cohortSales: hot.n * conv.hot.p + cold.n * conv.cold.p,
+    };
+  };
+
   const rows = [];
   for (let i = 1; i <= 12; i++) {
     const key = `${YEAR}-${String(i).padStart(2, "0")}`;
@@ -161,6 +176,7 @@ function buildModel() {
     rows.push({
       key,
       ...c,
+      ...cohortOf(key),
       closed: key in CLOSED ? CLOSED[key] : null,
       // месяц выгрузки ещё идёт, его факт неполный
       partial: key === CLOSE_OBS_MONTH,
@@ -218,8 +234,8 @@ export default function ForecastYoY() {
   const W = 920;
   const H = 300;
   const padL = 40;
-  const padR = 16;
-  const padT = 22;
+  const padR = 40;
+  const padT = 28;
   const padB = 34;
   const innerW = W - padL - padR;
   const innerH = H - padT - padB;
@@ -234,6 +250,14 @@ export default function ForecastYoY() {
   const step = x(1) - x(0);
   const yTicks = [];
   for (let v = 0; v <= yMax; v += 5) yTicks.push(v);
+
+  // Вторая ось справа — встречи. Масштабы отличаются на порядок, поэтому
+  // столбцы живут на своей шкале и служат фоном для линий продаж.
+  const meetMax = Math.max(50, Math.ceil(Math.max(...rows.map((r) => r.totalM)) / 50) * 50);
+  const yR = (v) => padT + innerH - (innerH * v) / meetMax;
+  const barW = Math.min(26, step * 0.52);
+  const meetTicks = [];
+  for (let v = 0; v <= meetMax; v += meetMax / 5) meetTicks.push(v);
 
   const band =
     "M" +
@@ -319,7 +343,8 @@ export default function ForecastYoY() {
           Штриховая линия — прогноз: сколько сделок закроется в этом месяце по встречам
           предыдущих месяцев, конверсии и циклу сделки. Полоса — пессимистичный и оптимистичный
           сценарий. Сплошная линия — факт закрытий; текущий месяц на ней не показан, пока он
-          не закончился — его цифра есть в таблице.
+          не закончился — его цифра есть в таблице. Столбцы — сколько встреч прошло в месяце,
+          по правой оси: видно, из какого потока получаются эти продажи.
         </div>
         <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: "visible" }}>
           {yTicks.map((v) => (
@@ -339,6 +364,29 @@ export default function ForecastYoY() {
             </g>
           ))}
 
+          {/* Правая ось — встречи */}
+          {meetTicks.map((v) => (
+            <text
+              key={`r${v}`}
+              x={W - padR + 6}
+              y={yR(v) + 3}
+              fontSize={9}
+              fill={C_MEET}
+              opacity={0.75}
+            >
+              {v}
+            </text>
+          ))}
+          <text
+            x={W - padR + 6}
+            y={padT - 7}
+            fontSize={9}
+            fill={C_MEET}
+            opacity={0.9}
+          >
+            встреч
+          </text>
+
           {/* Зона, где часть встреч ещё не состоялась */}
           {firstPartial > 0 && (
             <>
@@ -351,9 +399,8 @@ export default function ForecastYoY() {
                 opacity={0.5}
               />
               <text
-                x={W - padR}
-                y={padT - 6}
-                textAnchor="end"
+                x={x(firstPartial) - step / 2 + 6}
+                y={padT - 7}
                 fontSize={9}
                 fill="var(--color-text-secondary,#757987)"
                 opacity={0.8}
@@ -362,6 +409,32 @@ export default function ForecastYoY() {
               </text>
             </>
           )}
+
+          {/* Столбцы встреч: холодные снизу, горячие сверху. Смоделированные
+              месяцы бледнее — встречи в них ещё не состоялись. */}
+          {rows.map((r, i) => {
+            const o = r.meetKnown ? 1 : 0.45;
+            return (
+              <g key={`bar-${r.key}`}>
+                <rect
+                  x={x(i) - barW / 2}
+                  y={yR(r.coldM)}
+                  width={barW}
+                  height={Math.max(0, yR(0) - yR(r.coldM))}
+                  fill={C_MEET}
+                  opacity={0.14 * o}
+                />
+                <rect
+                  x={x(i) - barW / 2}
+                  y={yR(r.totalM)}
+                  width={barW}
+                  height={Math.max(0, yR(r.coldM) - yR(r.totalM))}
+                  fill={C_MEET}
+                  opacity={0.62 * o}
+                />
+              </g>
+            );
+          })}
 
           <path d={band} fill="var(--chart-area,rgba(86,214,127,.10))" stroke="none" />
           <path
@@ -434,6 +507,12 @@ export default function ForecastYoY() {
                     `Пессимистично: ${r.lo.toFixed(1)}`,
                     "",
                     `С горячих: ${r.byChannel.hot.toFixed(1)} · с холодных: ${r.byChannel.cold.toFixed(1)}`,
+                    "",
+                    `Встреч в этом месяце: ${r.totalM.toFixed(0)}` +
+                      ` (${r.hotM.toFixed(0)} гор + ${r.coldM.toFixed(0)} хол)` +
+                      (r.meetKnown ? "" : " — прогноз"),
+                    `Они дадут ${r.cohortSales.toFixed(1)} продаж за весь цикл,`,
+                    `из них ${r.fromSameMonth.toFixed(1)} закроется в этом же месяце`,
                     `Из встреч, которые уже прошли: ${(r.ready * 100).toFixed(0)}% прогноза` +
                       (r.ready < 0.999 ? ` (${r.fromKnown.toFixed(1)} из ${r.mid.toFixed(1)})` : ""),
                     ...(r.closed == null
@@ -457,16 +536,25 @@ export default function ForecastYoY() {
             <span style={{ width: 16, height: 3, borderRadius: 2, background: C_FACT }} />
             факт закрытий
           </span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--color-text-secondary,#757987)" }}>
+            <span style={{ display: "inline-flex", flexDirection: "column", width: 10 }}>
+              <span style={{ height: 5, background: C_MEET, opacity: 0.62 }} />
+              <span style={{ height: 7, background: C_MEET, opacity: 0.14 }} />
+            </span>
+            встречи месяца: горячие / холодные (ось справа)
+          </span>
         </div>
       </div>
 
       {/* Таблица */}
       <div style={card}>
         <div style={{ overflowX: "auto" }}>
-          <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 720 }}>
+          <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 900 }}>
             <thead>
               <tr>
                 <th style={th2}>Месяц</th>
+                <th style={{ ...th2, textAlign: "center" }}>Встреч в месяце</th>
+                <th style={{ ...th2, textAlign: "center" }}>Продаж с них за весь цикл</th>
                 <th style={{ ...th2, textAlign: "center" }}>Пессим.</th>
                 <th style={{ ...th2, textAlign: "center" }}>Реалист.</th>
                 <th style={{ ...th2, textAlign: "center" }}>Оптим.</th>
@@ -479,6 +567,29 @@ export default function ForecastYoY() {
               {rows.map((r) => (
                 <tr key={r.key}>
                   <td style={{ ...td2, fontWeight: 600, whiteSpace: "nowrap" }}>{fmL(r.key)}</td>
+                  <td
+                    style={{
+                      ...td2,
+                      textAlign: "center",
+                      whiteSpace: "nowrap",
+                      opacity: r.meetKnown ? 1 : 0.6,
+                    }}
+                  >
+                    <span style={{ fontWeight: 600 }}>{r.totalM.toFixed(0)}</span>
+                    <div style={{ fontSize: 10, color: "var(--color-text-secondary,#757987)" }}>
+                      {r.hotM.toFixed(0)} гор + {r.coldM.toFixed(0)} хол
+                    </div>
+                  </td>
+                  <td
+                    style={{
+                      ...td2,
+                      textAlign: "center",
+                      color: "var(--color-text-secondary,#757987)",
+                      opacity: r.meetKnown ? 1 : 0.6,
+                    }}
+                  >
+                    {r.cohortSales.toFixed(1)}
+                  </td>
                   <td style={{ ...td2, textAlign: "center", color: "var(--color-text-secondary,#757987)" }}>
                     {r.lo.toFixed(1)}
                   </td>
@@ -555,6 +666,16 @@ export default function ForecastYoY() {
               ))}
               <tr style={{ background: "var(--color-background-secondary,#E8EBEE)" }}>
                 <td style={{ ...td2, fontWeight: 700 }}>Модель {YEAR}</td>
+                <td style={{ ...td2, textAlign: "center", fontWeight: 700, whiteSpace: "nowrap" }}>
+                  {rows.reduce((a, r) => a + r.totalM, 0).toFixed(0)}
+                  <div style={{ fontSize: 10, fontWeight: 400, color: "var(--color-text-secondary,#757987)" }}>
+                    {rows.reduce((a, r) => a + r.hotM, 0).toFixed(0)} гор +{" "}
+                    {rows.reduce((a, r) => a + r.coldM, 0).toFixed(0)} хол
+                  </div>
+                </td>
+                <td style={{ ...td2, textAlign: "center", fontWeight: 700 }}>
+                  {rows.reduce((a, r) => a + r.cohortSales, 0).toFixed(0)}
+                </td>
                 <td style={{ ...td2, textAlign: "center", fontWeight: 700 }}>{model.lo.toFixed(0)}</td>
                 <td style={{ ...td2, textAlign: "center", fontWeight: 700 }}>{model.mid.toFixed(0)}</td>
                 <td style={{ ...td2, textAlign: "center", fontWeight: 700 }}>{model.hi.toFixed(0)}</td>
@@ -571,6 +692,7 @@ export default function ForecastYoY() {
                 <td style={{ ...td2, fontWeight: 700, whiteSpace: "nowrap" }}>
                   Ожидание: факт по {fmL(check.to)} + модель
                 </td>
+                <td style={{ ...td2 }} colSpan={2} />
                 <td style={{ ...td2, textAlign: "center", fontWeight: 700 }}>{expected.lo.toFixed(0)}</td>
                 <td style={{ ...td2, textAlign: "center", fontWeight: 700 }}>{expected.mid.toFixed(0)}</td>
                 <td style={{ ...td2, textAlign: "center", fontWeight: 700 }}>{expected.hi.toFixed(0)}</td>
