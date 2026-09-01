@@ -3,9 +3,12 @@ import { card, pill } from "../utils/styles.js";
 import { TEAMS, TC } from "../constants.js";
 import { gM, gS, cv } from "../utils/convUtils.js";
 import { actMo, fmL, fmQ, quartersOf, monthsInQuarter } from "../utils/dateUtils.js";
+import { teamOf } from "../utils/teams.js";
 
-// Агрегирует встречи/продажи по списку консультантов за период
-function agg(data, periodKeys, filter, isQuarter) {
+// Агрегирует встречи/продажи по списку консультантов за период.
+// team — если задана, месяц человека учитывается только когда он в этом месяце
+// был в этой команде: переход между командами не переписывает историю.
+function agg(data, periodKeys, filter, isQuarter, team) {
   // periodKeys — массив ключей периодов (месяцы или кварталы)
   // Возвращает для каждого периода { meetings, sales, conv }
   const allMonths = actMo(data, filter);
@@ -15,6 +18,7 @@ function agg(data, periodKeys, filter, isQuarter) {
     let s = 0;
     for (const d of data) {
       for (const k of months) {
+        if (team && teamOf(d, k) !== team) continue;
         m += gM(d, k, filter);
         s += gS(d, k, filter);
       }
@@ -49,8 +53,7 @@ export default function ConvChart({ data, filter, byQuarter: byQuarterProp, titl
   // Серии по командам
   const teamSeries = {};
   for (const t of TEAMS) {
-    const teamData = data.filter((d) => d.team === t);
-    teamSeries[t] = agg(teamData, periods, filter, byQuarter);
+    teamSeries[t] = agg(data, periods, filter, byQuarter, t);
   }
 
   // Максимум оси Y — только по видимым линиям (скрытые команды не должны

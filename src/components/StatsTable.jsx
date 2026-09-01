@@ -9,6 +9,7 @@ import {
   quartersOf,
   monthsInQuarter,
 } from "../utils/dateUtils.js";
+import { teamOf, wasInTeam } from "../utils/teams.js";
 
 // mode: "teams" — команды с раскрытием по консультантам; "consultants" — плоский список
 // title — заголовок карточки (необязательный)
@@ -24,14 +25,17 @@ export default function StatsTable({ data, filter, mode, title, byQuarter: byQua
   const months = actMo(data, filter);
   const periods = byQuarter ? quartersOf(months) : months;
 
-  // Значения по периодам для набора консультантов
-  function periodVals(members) {
+  // Значения по периодам для набора консультантов.
+  // team — если задана, месяц человека учитывается только когда он в этом
+  // месяце был в этой команде: переход не переписывает прошлое.
+  function periodVals(members, team) {
     return periods.map((pk) => {
       const ms = byQuarter ? monthsInQuarter(pk, months) : [pk];
       let m = 0;
       let s = 0;
       for (const d of members) {
         for (const k of ms) {
+          if (team && teamOf(d, k) !== team) continue;
           m += gM(d, k, filter);
           s += gS(d, k, filter);
         }
@@ -40,11 +44,12 @@ export default function StatsTable({ data, filter, mode, title, byQuarter: byQua
     });
   }
 
-  function totals(members) {
+  function totals(members, team) {
     let m = 0;
     let s = 0;
     for (const d of members) {
       for (const k of months) {
+        if (team && teamOf(d, k) !== team) continue;
         m += gM(d, k, filter);
         s += gS(d, k, filter);
       }
@@ -63,9 +68,17 @@ export default function StatsTable({ data, filter, mode, title, byQuarter: byQua
     return { dir: last >= prev ? 1 : -1, series: usable.map((v) => v.conv || 0) };
   }
 
-  function compute(label, team, members) {
-    const vals = periodVals(members);
-    return { label, team, members, vals, tot: totals(members), tr: trendOf(vals) };
+  // teamFilter — по какой команде резать месяцы (для строк команд и их детей)
+  function compute(label, team, members, teamFilter) {
+    const vals = periodVals(members, teamFilter);
+    return {
+      label,
+      team,
+      members,
+      vals,
+      tot: totals(members, teamFilter),
+      tr: trendOf(vals),
+    };
   }
 
   // Сортировка по выбранному столбцу (применяется и к командам, и к людям внутри)
@@ -86,12 +99,22 @@ export default function StatsTable({ data, filter, mode, title, byQuarter: byQua
   let computed;
   if (mode === "teams") {
     computed = sortRows(
-      TEAMS.map((t) =>
-        compute(t, t, data.filter((d) => d.team === t))
-      )
+      // В состав команды попадают все, кто был в ней хотя бы один месяц.
+      // Перешедший консультант виден в обеих командах — каждая со своим
+      // отрезком месяцев, поэтому сумма по командам равна общему итогу.
+      TEAMS.map((t) => {
+        const members = data.filter((d) => wasInTeam(d, t, months));
+        return { ...compute(t, t, members, t), teamKey: t };
+      })
     ).map((r) => ({
       ...r,
-      children: sortRows(r.members.map((d) => compute(d.name, d.team, [d]))),
+      children: sortRows(
+        r.members.map((d) => ({
+          ...compute(d.name, r.teamKey, [d], r.teamKey),
+          // человек числится в другой команде — значит перешёл
+          movedTo: d.teamHistory && d.team !== r.teamKey ? d.team : null,
+        }))
+      ),
     }));
   } else {
     computed = sortRows(data.map((d) => compute(d.name, d.team, [d])));
@@ -304,6 +327,22 @@ export default function StatsTable({ data, filter, mode, title, byQuarter: byQua
                           }}
                         >
                           {c.label}
+                          {c.movedTo && (
+                            <span
+                              title={`Перешёл в ${c.movedTo}; месяцы в ${r.teamKey} остались здесь`}
+                              style={{
+                                marginLeft: 6,
+                                fontSize: 10,
+                                color: TC[c.movedTo],
+                                border: `1px solid ${TC[c.movedTo]}`,
+                                borderRadius: 4,
+                                padding: "0 3px",
+                                verticalAlign: "middle",
+                              }}
+                            >
+                              → {c.movedTo}
+                            </span>
+                          )}
                         </td>
                         {c.vals.map((v, i) => (
                           <PeriodCell

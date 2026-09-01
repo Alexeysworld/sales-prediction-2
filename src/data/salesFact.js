@@ -48,7 +48,8 @@ export const SALES_FACT = [
     won: z([0,0,0,0,0,0,1,0,2,2,4,2,2,2,3,2,1,0,0,0]) },
   { name: "Сергей", fullName: "Sergey Goncharov", team: "MS3",
     won: z([0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,1,0]) },
-  { name: "Максим", fullName: "Maxim Sadykov", team: "MS2",
+  { name: "Максим", fullName: "Maxim Sadykov", team: "MS1",
+    teamHistory: [{ until: "2026-07", team: "MS2" }],
     won: z([0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0]) },
 ];
 

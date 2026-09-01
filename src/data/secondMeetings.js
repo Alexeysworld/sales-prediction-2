@@ -31,7 +31,7 @@ export const SECOND_MEETINGS = [
   { name: "Мария",    team: "MS1", m1: z([0,0,0,0,7,19]),    m2: z([0,0,0,0,3,2]) },
   { name: "Мария Д.", team: "MS1", m1: z([0,0,1,0,6,8]),     m2: z([0,0,1,0,4,5]) },
   { name: "Андрей",   team: "MS2", m1: z([0,0,0,0,6,13]),    m2: z([0,0,0,0,6,5]) },
-  { name: "Максим",   team: "MS2", m1: z([0,0,0,1,26,19]),   m2: z([0,0,0,0,11,5]) },
+  { name: "Максим",   team: "MS1", teamHistory: [{ until: "2026-07", team: "MS2" }], m1: z([0,0,0,1,26,19]),   m2: z([0,0,0,0,11,5]) },
   { name: "Сергей Р.",team: "MS1", m1: z([0,2,5,0,13,22]),   m2: z([0,1,1,0,3,4]) },
   { name: "Сергей",   team: "MS3", m1: z([0,0,11,2,3,17]),   m2: z([0,0,4,2,3,3]) },
 ];
@@ -42,6 +42,7 @@ export const SECOND_MEETINGS = [
 export const SECOND_AS_D = SECOND_MEETINGS.map((d) => ({
   name: d.name,
   team: d.team,
+  teamHistory: d.teamHistory,
   meetings: d.m1,
   sales: d.m2,
   hotM: {},
