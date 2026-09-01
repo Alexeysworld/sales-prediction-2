@@ -8,7 +8,8 @@ import {
   WON_BY_MONTH,
   WIN_LAG,
   WIN_LAG_META,
-  CLOSE_OBS_MONTH,
+  CLOSE_THROUGH,
+  CLOSE_PARTIAL,
 } from "../data/salesFact.js";
 
 // ── Параметры модели ────────────────────────────────────────────────────────
@@ -55,9 +56,11 @@ const prevYear = (m) => shift(m, 12);
 const pct = (v) => `${(v * 100).toFixed(1)}%`;
 const signed = (v, digits = 1) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(digits)}`;
 
-// Какая доля сделок канала за месяц m уже успела закрыться к моменту выгрузки
+// Какая доля сделок канала за месяц m уже успела закрыться. Считается от
+// последнего ПОЛНОГО месяца закрытий: для встреч месяца m наблюдаемы лаги
+// 0…(CLOSE_THROUGH − m), остальное ещё в работе.
 function maturity(m, type) {
-  const age = monthDiff(m, CLOSE_OBS_MONTH);
+  const age = monthDiff(m, CLOSE_THROUGH);
   if (age < 0) return 0;
   const cum = LAG_CUM[type];
   return age >= cum.length ? 1 : cum[age];
@@ -93,7 +96,7 @@ function wilson(successes, n) {
 function buildModel() {
   // 1. Конверсия. Берём когорты, успевшие дозреть, и всё равно правим на
   //    остаточную незрелость: наблюдаемые продажи / зрелость когорты.
-  const base = MONTHS_ALL.filter((m) => monthDiff(m, CLOSE_OBS_MONTH) >= MIN_MATURITY_AGE);
+  const base = MONTHS_ALL.filter((m) => monthDiff(m, CLOSE_THROUGH) >= MIN_MATURITY_AGE);
   const convOf = (type) => {
     let meetings = 0;
     let sales = 0;
@@ -178,10 +181,10 @@ function buildModel() {
       ...c,
       ...cohortOf(key),
       closed: key in CLOSED ? CLOSED[key] : null,
-      // месяц выгрузки ещё идёт, его факт неполный
-      partial: key === CLOSE_OBS_MONTH,
+      // месяц выгружен частично (экспорт посреди месяца) — факт неполный
+      partial: key === CLOSE_PARTIAL,
       // месяц завершён: факт финальный
-      done: key in CLOSED && key !== CLOSE_OBS_MONTH,
+      done: key in CLOSED && key !== CLOSE_PARTIAL,
     });
   }
 
@@ -342,9 +345,12 @@ export default function ForecastYoY() {
         <div style={{ fontSize: 12.5, color: "var(--color-text-secondary,#757987)", margin: "4px 0 12px" }}>
           Штриховая линия — прогноз: сколько сделок закроется в этом месяце по встречам
           предыдущих месяцев, конверсии и циклу сделки. Полоса — пессимистичный и оптимистичный
-          сценарий. Сплошная линия — факт закрытий; текущий месяц на ней не показан, пока он
-          не закончился — его цифра есть в таблице. Столбцы — сколько встреч прошло в месяце,
-          по правой оси: видно, из какого потока получаются эти продажи.
+          сценарий. Сплошная линия — факт закрытий
+          {CLOSE_PARTIAL
+            ? "; текущий месяц на ней не показан, пока он не закончился — его цифра есть в таблице"
+            : ` — выгружен полностью по ${fmL(CLOSE_THROUGH)} включительно`}
+          . Столбцы — сколько встреч прошло в месяце, по правой оси: видно, из какого потока
+          получаются эти продажи.
         </div>
         <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: "visible" }}>
           {yTicks.map((v) => (
