@@ -87,11 +87,15 @@ export default function MeetingQualityTab() {
     })
   );
 
-  // по консультантам
+  // по консультантам. Команда берётся из самой поздней встречи в выбранном
+  // периоде: у перешедшего консультанта записи хранят команду на дату встречи,
+  // и показывать первую из них было бы устаревшей.
   const byCons = {};
   for (const r of data) {
-    if (!byCons[r.c]) byCons[r.c] = { name: r.c, team: r.t, recs: [] };
-    byCons[r.c].recs.push(r);
+    if (!byCons[r.c]) byCons[r.c] = { name: r.c, team: r.t, last: r.d, recs: [] };
+    const c = byCons[r.c];
+    if (r.d >= c.last) { c.last = r.d; c.team = r.t; }
+    c.recs.push(r);
   }
   let consRows = Object.values(byCons).map((c) => ({
     name: c.name,
