@@ -39,10 +39,12 @@ const METRICS = [
     topTitle: "Топ-3 по конверсии из встречи в продажу",
     antiTitle: "Антитоп-3 по конверсии из встречи в продажу",
     short: "конверсия в продажу",
+    accent: TC.MS1,
     value: (r) => r.conv,
     n: (r) => r.meetings,
     unit: "встреч",
     sub: (r) => `${r.meetings} встреч → ${r.sales} прод`,
+    subShort: (r) => `${r.meetings}→${r.sales}`,
     // Разбивка в таблице: три узких столбца вместо «Данные + %»
     parts: [
       { label: "Все", value: (r) => r.conv, n: (r) => r.meetings, sub: (r) => `${r.meetings}→${r.sales}` },
@@ -51,15 +53,33 @@ const METRICS = [
     ],
   },
   {
+    id: "count",
+    column: "Количество продаж",
+    topTitle: "Топ-3 по количеству продаж",
+    antiTitle: "Антитоп-3 по количеству продаж",
+    short: "количество продаж",
+    value: (r) => r.sales,
+    n: (r) => r.meetings,
+    unit: "встреч",
+    // В подписи — поток и конверсия: само количество уже стоит справа
+    sub: (r) => `${r.meetings} встреч · CR ${r.conv == null ? "—" : r.conv.toFixed(1) + "%"}`,
+    subShort: (r) => `${r.meetings} встр`,
+    fmt: (v) => (v == null ? "—" : String(v)),
+    leanSample: true,
+    accent: TC.MS2,
+  },
+  {
     id: "second",
     column: "Конверсия в повторную встречу",
     topTitle: "Топ-3 по конверсии во вторую встречу",
     antiTitle: "Антитоп-3 по конверсии во вторую встречу",
     short: "конверсия во 2-ю встречу",
+    accent: TC.MS3,
     value: (r) => r.cr2,
     n: (r) => r.m1,
     unit: "встреч",
     sub: (r) => `${r.m1} встреч → ${r.m2} повт`,
+    subShort: (r) => `${r.m1}→${r.m2}`,
   },
   {
     id: "quality",
@@ -67,10 +87,12 @@ const METRICS = [
     topTitle: "Топ-3 по качеству проведения встречи",
     antiTitle: "Антитоп-3 по качеству проведения встречи",
     short: "качество встречи",
+    accent: C_WARN,
     value: (r) => r.qpct,
     n: (r) => r.qn,
     unit: "оценок",
     sub: (r) => `${r.qn} ${r.qn === 1 ? "оценка" : "оценок"}`,
+    subShort: (r) => `${r.qn}`,
   },
 ];
 
@@ -78,6 +100,8 @@ const MIN_OPTIONS = [3, 5, 10, 20];
 
 // Нормировка цвета: значение метрики, которое считаем «отличным» (100% шкалы).
 // У метрик разные масштабы, поэтому единая шкала без нормировки врала бы.
+// У количества продаж масштаб зависит от длины периода, поэтому нормируем
+// на лучший результат в выборке, а не на константу.
 const NORM = { sales: 15, second: 60, quality: 100 };
 
 const selStyle = {
@@ -178,7 +202,13 @@ export default function ExperimentTab() {
     ok.sort((a, b) => {
       const d = dir === "desc" ? m.value(b) - m.value(a) : m.value(a) - m.value(b);
       if (Math.abs(d) > 1e-9) return d;
-      return m.n(b) - m.n(a);
+      // При равных значениях у долей выше тот, у кого больше наблюдений —
+      // такая конверсия показательнее, и это верно в обе стороны рейтинга.
+      if (!m.leanSample) return m.n(b) - m.n(a);
+      // У абсолютного количества размер выборки читается наоборот и зависит
+      // от направления: те же продажи с меньшего потока встреч — лучший
+      // результат, а тот же ноль с большего потока — худший.
+      return dir === "desc" ? m.n(a) - m.n(b) : m.n(b) - m.n(a);
     });
     return ok;
   }
@@ -197,15 +227,24 @@ export default function ExperimentTab() {
     );
   }
 
+  // Верх шкалы цвета для метрики. Для количества продаж константы нет — берём
+  // лучший результат среди попавших в рейтинг, иначе цвет зависел бы от периода.
+  function normOf(m) {
+    if (NORM[m.id] != null) return NORM[m.id];
+    const vals = rows.filter((r) => m.n(r) >= minN).map((r) => m.value(r) || 0);
+    return Math.max(1, ...vals);
+  }
+
   // Значение метрики с цветом: единая шкала «красный → зелёный», нормированная
-  // под диапазон метрики (у трёх метрик разные масштабы).
-  function cellColors(value, n, normId) {
+  // под диапазон метрики (у метрик разные масштабы).
+  function cellColors(value, n, m) {
     return n >= minN && value != null
-      ? rampColors(Math.min(100, (value / NORM[normId]) * 100))
+      ? rampColors(Math.min(100, (value / normOf(m)) * 100))
       : { bg: "transparent", fg: "var(--color-text-tertiary,#9AA1AF)" };
   }
-  const valueColors = (m, r) => cellColors(m.value(r), m.n(r), m.id);
-  const fmtVal = (m, v) => (v == null ? "—" : `${v.toFixed(m.id === "quality" ? 0 : 1)}%`);
+  const valueColors = (m, r) => cellColors(m.value(r), m.n(r), m);
+  const fmtVal = (m, v) =>
+    m.fmt ? m.fmt(v) : v == null ? "—" : `${v.toFixed(m.id === "quality" ? 0 : 1)}%`;
 
   // Карточка топ-3 / антитоп-3
   function HighlightCard({ metric: m, dir }) {
@@ -271,14 +310,21 @@ export default function ExperimentTab() {
     const rest = rows
       .filter((r) => !eligible.includes(r))
       .sort((a, b) => (m.value(b) || 0) - (m.value(a) || 0));
-    const thc = { ...th2, padding: "6px 7px" };
-    const tdc = { ...td2, padding: "7px", fontSize: 12.5 };
+    const thc = { ...th2, padding: "6px 4px" };
+    const tdc = { ...td2, padding: "7px 4px", fontSize: 12.5 };
 
-    const tdp = { ...tdc, padding: "6px 5px", textAlign: "center", whiteSpace: "nowrap" };
+    const tdp = { ...tdc, padding: "6px 3px", textAlign: "center", whiteSpace: "nowrap" };
 
     const Row = ({ r, rank, dim }) => (
       <tr style={dim ? { opacity: 0.55 } : undefined}>
-        <td style={{ ...tdc, textAlign: "center", color: "var(--color-text-secondary,#757987)" }}>
+        <td
+          style={{
+            ...tdc,
+            padding: "7px 2px",
+            textAlign: "center",
+            color: "var(--color-text-secondary,#757987)",
+          }}
+        >
           {rank || "—"}
         </td>
         <td style={{ ...tdc, whiteSpace: "nowrap" }}>
@@ -289,7 +335,7 @@ export default function ExperimentTab() {
           m.parts.map((part) => {
             const v = part.value(r);
             const n = part.n(r);
-            const { bg, fg } = cellColors(v, n, m.id);
+            const { bg, fg } = cellColors(v, n, m);
             return (
               <td key={part.label} style={{ ...tdp, background: bg, color: fg }}>
                 <div style={{ fontWeight: 700 }}>{fmtVal(m, v)}</div>
@@ -300,7 +346,7 @@ export default function ExperimentTab() {
         ) : (
           <>
             <td style={{ ...tdc, textAlign: "right", whiteSpace: "nowrap", color: "var(--color-text-secondary,#757987)", fontSize: 11 }}>
-              {m.sub(r)}
+              {(m.subShort || m.sub)(r)}
             </td>
             <td
               style={{
@@ -326,18 +372,20 @@ export default function ExperimentTab() {
           <table style={{ borderCollapse: "collapse", width: "100%" }}>
             <thead>
               <tr>
-                <th style={{ ...thc, textAlign: "center" }}>#</th>
+                <th style={{ ...thc, textAlign: "center", padding: "6px 2px" }}>#</th>
                 <th style={thc}>Консультант</th>
                 {m.parts ? (
                   m.parts.map((part) => (
-                    <th key={part.label} style={{ ...thc, textAlign: "center", padding: "6px 5px" }}>
+                    <th key={part.label} style={{ ...thc, textAlign: "center", padding: "6px 3px" }}>
                       {part.label}
                     </th>
                   ))
                 ) : (
                   <>
-                    <th style={{ ...thc, textAlign: "right" }}>Данные</th>
-                    <th style={{ ...thc, textAlign: "center" }}>%</th>
+                    <th style={{ ...thc, textAlign: "right", padding: "6px 4px" }}>N</th>
+                    <th style={{ ...thc, textAlign: "center", padding: "6px 4px" }}>
+                      {m.fmt ? "Прод" : "%"}
+                    </th>
                   </>
                 )}
               </tr>
@@ -440,7 +488,7 @@ export default function ExperimentTab() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(330px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fit, minmax(255px, 1fr))",
           gap: 12,
           alignItems: "start",
         }}
@@ -453,9 +501,7 @@ export default function ExperimentTab() {
                 fontWeight: 700,
                 letterSpacing: "-0.01em",
                 paddingBottom: 2,
-                borderBottom: `2px solid ${
-                  m.id === "sales" ? TC.MS1 : m.id === "second" ? TC.MS2 : TC.MS3
-                }`,
+                borderBottom: `2px solid ${m.accent}`,
               }}
             >
               {m.column}
@@ -474,7 +520,14 @@ export default function ExperimentTab() {
         пересечение всех трёх. Продажи привязаны к месяцу встречи, последние месяцы занижены —
         сделки ещё дозревают. Цвет нормирован под масштаб метрики: зелёный максимум — это{" "}
         {NORM.sales}% в продажу, {NORM.second}% во вторую встречу и {NORM.quality}% качества.
-        При равных значениях выше тот, у кого больше наблюдений. В разбивке «Гор / Хол» процент
+        Количество продаж — абсолютное, поэтому цвет нормирован на лучший результат периода,
+        а не на константу. Порог наблюдений к нему применяется тот же: без него в антитоп
+        попадали бы просто те, кто провёл мало встреч, а с ним антитоп читается как «мало
+        продаж при достаточном потоке».
+        <br />
+        При равных значениях у долей выше тот, у кого больше наблюдений — такая конверсия
+        показательнее. У количества продаж выборка читается иначе: те же продажи с меньшего
+        потока встреч ставятся выше, а тот же ноль с большего потока — ниже. В разбивке «Гор / Хол» процент
         показан серым без заливки, если наблюдений меньше {minN}: горячих встреч на человека
         обычно немного, и такая конверсия — скорее шум. Чтобы увидеть срезы в цвете, снизьте
         минимум наблюдений.
