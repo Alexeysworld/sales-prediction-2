@@ -13,6 +13,7 @@ import { actMo, fmL } from "../utils/dateUtils.js";
 import { D } from "../data/consultants.js";
 import { SECOND_MEETINGS, SM_MONTHS } from "../data/secondMeetings.js";
 import { MEETING_QUALITY, MQ_CRITERIA, MQ_MAX } from "../data/meetingQuality.js";
+import { SALES_FACT, SF_MONTHS } from "../data/salesFact.js";
 
 const mean = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
 const recPct = (s) => (s.reduce((a, b) => a + b, 0) / MQ_MAX) * 100;
@@ -21,18 +22,38 @@ const monthOf = (d) => d.slice(0, 7);
 // Месяцы, покрытые каждым источником
 const D_MONTHS = actMo(D, "all");
 const Q_MONTHS = [...new Set(MEETING_QUALITY.map((r) => monthOf(r.d)))].sort();
-const ALL_MONTHS = [...new Set([...D_MONTHS, ...SM_MONTHS, ...Q_MONTHS])].sort();
+const ALL_MONTHS = [...new Set([...D_MONTHS, ...SM_MONTHS, ...Q_MONTHS, ...SF_MONTHS])].sort();
 
-// Период по умолчанию — пересечение всех трёх источников (там сравнение корректно)
-const OVERLAP_FROM = [D_MONTHS[0], SM_MONTHS[0], Q_MONTHS[0]].sort().at(-1);
+// Период по умолчанию — пересечение всех источников (там сравнение корректно)
+const OVERLAP_FROM = [D_MONTHS[0], SM_MONTHS[0], Q_MONTHS[0], SF_MONTHS[0]].sort().at(-1);
 const OVERLAP_TO = [
   D_MONTHS[D_MONTHS.length - 1],
   SM_MONTHS[SM_MONTHS.length - 1],
   Q_MONTHS[Q_MONTHS.length - 1],
+  SF_MONTHS[SF_MONTHS.length - 1],
 ].sort()[0];
 
 // Метрики рейтинга
 const METRICS = [
+  {
+    id: "count",
+    column: "Закрытых сделок",
+    topTitle: "Топ-3 по количеству закрытых сделок",
+    antiTitle: "Антитоп-3 по количеству закрытых сделок",
+    short: "закрытых сделок",
+    // Факт из выгрузки сделок: месяц закрытия (Won time), а не месяц встречи
+    value: (r) => r.won,
+    n: (r) => r.meetings,
+    unit: "встреч",
+    // Конверсию здесь не показываем: закрытия отнесены к месяцу закрытия,
+    // а встречи — к месяцу встречи, делить одно на другое нельзя.
+    sub: (r) => `${r.meetings} встреч в периоде`,
+    subShort: (r) => `${r.meetings} встр`,
+    fmt: (v) => (v == null ? "—" : String(v)),
+    valueHead: "Сделок",
+    leanSample: true,
+    accent: TC.MS2,
+  },
   {
     id: "sales",
     column: "Конверсия в продажу",
@@ -51,22 +72,6 @@ const METRICS = [
       { label: "Гор", value: (r) => r.hotConv, n: (r) => r.hotM, sub: (r) => `${r.hotM}→${r.hotS}` },
       { label: "Хол", value: (r) => r.coldConv, n: (r) => r.coldM, sub: (r) => `${r.coldM}→${r.coldS}` },
     ],
-  },
-  {
-    id: "count",
-    column: "Количество продаж",
-    topTitle: "Топ-3 по количеству продаж",
-    antiTitle: "Антитоп-3 по количеству продаж",
-    short: "количество продаж",
-    value: (r) => r.sales,
-    n: (r) => r.meetings,
-    unit: "встреч",
-    // В подписи — поток и конверсия: само количество уже стоит справа
-    sub: (r) => `${r.meetings} встреч · CR ${r.conv == null ? "—" : r.conv.toFixed(1) + "%"}`,
-    subShort: (r) => `${r.meetings} встр`,
-    fmt: (v) => (v == null ? "—" : String(v)),
-    leanSample: true,
-    accent: TC.MS2,
   },
   {
     id: "second",
@@ -167,6 +172,10 @@ export default function ExperimentTab() {
         m1 += smRec.m1[k] || 0;
         m2 += smRec.m2[k] || 0;
       }
+    // закрытые сделки по месяцу закрытия (Won time)
+    const sfRec = SALES_FACT.find((d) => d.name === p.name);
+    let won = 0;
+    if (sfRec) for (const k of range) won += sfRec.won[k] || 0;
     // качество первой встречи
     const qRecs = MEETING_QUALITY.filter(
       (r) => r.c === p.name && range.includes(monthOf(r.d))
@@ -183,6 +192,7 @@ export default function ExperimentTab() {
       coldM,
       coldS,
       coldConv: cv(coldM, coldS),
+      won,
       m1,
       m2,
       cr2: cv(m1, m2),
@@ -384,7 +394,7 @@ export default function ExperimentTab() {
                   <>
                     <th style={{ ...thc, textAlign: "right", padding: "6px 4px" }}>N</th>
                     <th style={{ ...thc, textAlign: "center", padding: "6px 4px" }}>
-                      {m.fmt ? "Прод" : "%"}
+                      {m.valueHead || "%"}
                     </th>
                   </>
                 )}
@@ -515,19 +525,27 @@ export default function ExperimentTab() {
 
       <div style={{ fontSize: 11, color: "var(--color-text-secondary,#757987)", marginTop: 14, lineHeight: 1.5 }}>
         Период {fmL(range[0] || from)} — {fmL(range[range.length - 1] || to)}. Покрытие данных
-        различается: конверсия в продажу — с {fmL(D_MONTHS[0])}, вторая встреча — с{" "}
-        {fmL(SM_MONTHS[0])}, качество — с {fmL(Q_MONTHS[0])}. По умолчанию период выставлен на
-        пересечение всех трёх. Продажи привязаны к месяцу встречи, последние месяцы занижены —
-        сделки ещё дозревают. Цвет нормирован под масштаб метрики: зелёный максимум — это{" "}
+        различается: конверсия в продажу — с {fmL(D_MONTHS[0])}, закрытые сделки — с{" "}
+        {fmL(SF_MONTHS[0])}, вторая встреча — с {fmL(SM_MONTHS[0])}, качество — с{" "}
+        {fmL(Q_MONTHS[0])}. По умолчанию период выставлен на пересечение всех четырёх.
+        <br />
+        <b>Две колонки про продажи считаются по-разному.</b> «Закрытых сделок» — факт из
+        выгрузки сделок по дате закрытия (<i>Won time</i>): сколько человек реально закрыл
+        внутри периода, включая сделки со встреч более раннего времени. «Конверсия в продажу» —
+        отношение продаж к встречам, где продажа отнесена к месяцу первичной встречи; так
+        считается эффективность, но у последних месяцев доля занижена, потому что сделки ещё
+        дозревают. Числа в двух колонках не обязаны совпадать, и делить одно на другое нельзя —
+        поэтому под количеством закрытых сделок показан только поток встреч, без CR. Цвет нормирован под масштаб метрики: зелёный максимум — это{" "}
         {NORM.sales}% в продажу, {NORM.second}% во вторую встречу и {NORM.quality}% качества.
-        Количество продаж — абсолютное, поэтому цвет нормирован на лучший результат периода,
-        а не на константу. Порог наблюдений к нему применяется тот же: без него в антитоп
-        попадали бы просто те, кто провёл мало встреч, а с ним антитоп читается как «мало
-        продаж при достаточном потоке».
+        Закрытые сделки — абсолютная величина, поэтому цвет нормирован на лучший результат
+        периода, а не на константу: масштаб зависит от длины периода. Порог наблюдений к ней
+        применяется тот же, по встречам: без него в антитоп попадали бы просто те, кто провёл
+        мало встреч, а с ним он читается как «мало закрытий при достаточном потоке».
         <br />
         При равных значениях у долей выше тот, у кого больше наблюдений — такая конверсия
-        показательнее. У количества продаж выборка читается иначе: те же продажи с меньшего
-        потока встреч ставятся выше, а тот же ноль с большего потока — ниже. В разбивке «Гор / Хол» процент
+        показательнее. У закрытых сделок поток встреч — лишь грубый ориентир, и он читается
+        наоборот: те же закрытия с меньшего потока ставятся выше, а тот же ноль с большего
+        потока — ниже. В разбивке «Гор / Хол» процент
         показан серым без заливки, если наблюдений меньше {minN}: горячих встреч на человека
         обычно немного, и такая конверсия — скорее шум. Чтобы увидеть срезы в цвете, снизьте
         минимум наблюдений.

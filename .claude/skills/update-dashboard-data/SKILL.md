@@ -180,8 +180,9 @@ description: >-
 - `src/data/salesFact.js` — `SF_MONTHS` + `SALES_FACT`:
   `{ name, fullName, team, won }`, где `won` — продажи по месяцу **закрытия**
   сделки (`Won time`). Плюс `SALES_FACT_OTHER` (владельцы вне состава SG),
-  `WON_BY_MONTH` (итог по месяцам), `CLOSE_OBS_MONTH` (месяц выгрузки) и
+  `WON_BY_MONTH` (итог по месяцам), `CLOSE_THROUGH` / `CLOSE_PARTIAL` и
   `WIN_LAG` / `WIN_LAG_META` — распределение цикла сделки, см. ниже.
+  Отсюда же берётся колонка «Закрытых сделок» в рейтинге консультантов.
 
 ### Цикл сделки (`WIN_LAG`) — приходит от команды продаж
 
