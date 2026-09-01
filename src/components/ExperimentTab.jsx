@@ -127,6 +127,20 @@ export default function ExperimentTab() {
 
   const range = ALL_MONTHS.filter((m) => m >= from && m <= to);
 
+  // Пресеты периода. Нужны потому, что по умолчанию стоит пересечение
+  // источников (оценки встреч начались только в фев'26), и «сколько закрыл
+  // за год» без пресета отвечало бы неполным числом.
+  const LAST_YEAR = ALL_MONTHS[ALL_MONTHS.length - 1].slice(0, 4);
+  const PRESETS = [
+    {
+      label: `Весь ${LAST_YEAR}`,
+      from: ALL_MONTHS.find((m) => m.startsWith(LAST_YEAR)),
+      to: ALL_MONTHS.filter((m) => m.startsWith(LAST_YEAR)).at(-1),
+    },
+    { label: "Всё время", from: ALL_MONTHS[0], to: ALL_MONTHS[ALL_MONTHS.length - 1] },
+    { label: "Пересечение источников", from: OVERLAP_FROM, to: OVERLAP_TO },
+  ];
+
   // Продажи дозревают ~3 месяца: если период включает последние месяцы,
   // конверсия в продажу по ним занижена.
   const SALES_LAG = 3;
@@ -468,6 +482,19 @@ export default function ExperimentTab() {
             </option>
           ))}
         </select>
+        <span style={{ width: 12 }} />
+        {PRESETS.map((p) => (
+          <button
+            key={p.label}
+            style={pill(from === p.from && to === p.to)}
+            onClick={() => {
+              setFrom(p.from);
+              setTo(p.to);
+            }}
+          >
+            {p.label}
+          </button>
+        ))}
       </div>
 
       {immatureCount > 0 && (
