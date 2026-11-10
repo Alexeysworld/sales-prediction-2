@@ -77,16 +77,20 @@ function agg(monthKey, type) {
   return { m, s };
 }
 
-// То же, но только по тем, кто ещё работает. Нужно для прогноза будущих
-// встреч: ушедшие провели свои встречи в прошлом, но будущих не проведут.
-const ACTIVE = D.filter((d) => !d.leftAt);
 const LEFT = D.filter((d) => d.leftAt);
+const NEWCOMERS = D.filter((d) => d.startedAt);
 
-function aggActive(monthKey, type) {
-  let m = 0;
-  for (const d of ACTIVE) m += gM(d, monthKey, type);
-  return m;
-}
+// Работает ли человек в этом месяце
+const worksIn = (d, m) =>
+  (!d.leftAt || m <= d.leftAt) && (!d.startedAt || m >= d.startedAt);
+
+// Разгон новичка: медиана по 6 консультантам, вышедшим в 2026 (Алёна, Никита,
+// Максим, Сергей, Татьяна, Мария Д.) — встреч в месяц 0, 1, 2, … от выхода.
+// Разброс огромный (в первый полный месяц от 0 до 26), так что это грубая
+// оценка; дальше четвёртого месяца держим на последнем значении.
+const NEWCOMER_RAMP = [3, 7, 6, 14, 11];
+// Доля горячих у новичков ниже командной: у Алёны 12%, у Никиты 8%
+const NEWCOMER_HOT_SHARE = 0.1;
 
 function wilson(successes, n) {
   if (!n) return { p: 0, lo: 0, hi: 0 };
@@ -120,27 +124,49 @@ function buildModel() {
   };
   const conv = { hot: convOf("hot"), cold: convOf("cold") };
 
-  // 2. Рост встреч год к году. Считается только по тем, кто ещё работает,
-  //    и в числителе, и в знаменателе — сравнение like-for-like. Если взять
-  //    всех, ушедшие сидят в обеих частях и отношение смешивает две разные
-  //    вещи: изменение темпа работы и сокращение команды.
+  // 2. Сезонность. Прежняя схема «встречи год назад × рост год к году» здесь
+  //    ломается: половина нынешней команды год назад ещё не работала, их нули
+  //    раздували и базу, и коэффициент роста. Поэтому считаем индекс сезона
+  //    отдельно — по тем, кто отработал опорное окно прошлого года целиком, —
+  //    и прикладываем его к нынешнему темпу команды.
   const recent = MONTHS_ALL.slice(-YOY_WINDOW);
-  const growthOf = (type) => {
-    const now = recent.reduce((a, m) => a + aggActive(m, type), 0);
-    const before = recent.reduce((a, m) => a + aggActive(prevYear(m), type), 0);
-    return { now, before, k: before ? now / before : 1 };
+  const refLastYear = recent.map(prevYear);
+  const established = D.filter(
+    (d) => refLastYear.filter((k) => gM(d, k, "all")).length >= 2
+  );
+  const estBase =
+    refLastYear.reduce(
+      (a, k) => a + established.reduce((b, d) => b + gM(d, k, "all"), 0),
+      0
+    ) / YOY_WINDOW;
+  const seasonIndex = (m) => {
+    const ly = prevYear(m);
+    if (!MONTHS_ALL.includes(ly) || !estBase) return 1;
+    return established.reduce((a, d) => a + gM(d, ly, "all"), 0) / estBase;
   };
-  const growth = { hot: growthOf("hot"), cold: growthOf("cold") };
 
-  // 3. Поток встреч: факт там, где месяц прошёл, иначе год назад × рост.
-  //    База за прошлый год тоже берётся по активным: встречи ушедших
-  //    в ноя'25 не повторятся в ноя'26.
+  // 3. Темп каждого консультанта за последние месяцы — основа прогноза
+  const runRate = (d, type) =>
+    recent.reduce((a, k) => a + gM(d, k, type), 0) / YOY_WINDOW;
+
+  // 4. Поток встреч: факт там, где месяц прошёл, иначе темп × сезонный индекс.
+  //    Ушедшие выпадают с месяца после leftAt, новички входят по кривой
+  //    разгона: истории у них нет, экстраполировать нечего.
   const meetingsOf = (m, type) => {
     if (MONTHS_ALL.includes(m)) return { n: agg(m, type).m, known: true };
-    const ly = prevYear(m);
-    const fallback = recent.reduce((a, k) => a + aggActive(k, type), 0) / YOY_WINDOW;
-    const baseN = MONTHS_ALL.includes(ly) ? aggActive(ly, type) : fallback;
-    return { n: baseN * growth[type].k, known: false };
+    const idx = seasonIndex(m);
+    let n = 0;
+    for (const d of D) {
+      if (!worksIn(d, m)) continue;
+      if (d.startedAt) {
+        const k = monthDiff(d.startedAt, m);
+        const v = NEWCOMER_RAMP[Math.min(k, NEWCOMER_RAMP.length - 1)];
+        n += type === "hot" ? v * NEWCOMER_HOT_SHARE : v * (1 - NEWCOMER_HOT_SHARE);
+      } else {
+        n += runRate(d, type) * idx;
+      }
+    }
+    return { n, known: false };
   };
 
   // 4. Свёртка: продажи месяца T
@@ -242,12 +268,12 @@ function buildModel() {
   };
   closes.k = closes.fullPrev ? closes.full / closes.fullPrev : 1;
 
-  return { base, conv, growth, recent, rows, model, expected, check, closes };
+  return { base, conv, seasonIndex, established, recent, rows, model, expected, check, closes };
 }
 
 export default function ForecastYoY() {
   const M = buildModel();
-  const { conv, growth, rows, model, expected, check, closes } = M;
+  const { conv, rows, model, expected, check, closes } = M;
 
   // ── График ────────────────────────────────────────────────────────────────
   const W = 920;
@@ -793,20 +819,29 @@ export default function ForecastYoY() {
           закрыться к дате выгрузки — по тому же распределению лага. Без этой поправки конверсия
           занижается, а с ней — горячие {pct(conv.hot.p)}, холодные {pct(conv.cold.p)}.
           <br />
-          <b>Встречи.</b> До {fmL(LAST_MEETING_MONTH)} включительно — факт. Дальше: встречи того
-          же месяца год назад × рост за последние {YOY_WINDOW} месяца ({fmL(M.recent[0])}–
-          {fmL(M.recent[M.recent.length - 1])}: горячие{" "}
-          {signed((growth.hot.k - 1) * 100, 0)}%, холодные {signed((growth.cold.k - 1) * 100, 0)}
-          %).
-          {LEFT.length > 0 && (
+          <b>Встречи.</b> До {fmL(LAST_MEETING_MONTH)} включительно — факт. Дальше прогноз
+          строится не от «год назад × рост», а от нынешнего темпа каждого консультанта за{" "}
+          {YOY_WINDOW} последних месяца ({fmL(M.recent[0])}–{fmL(M.recent[M.recent.length - 1])}),
+          умноженного на сезонный индекс месяца:{" "}
+          {rows
+            .filter((r) => r.meetKnown === false)
+            .map((r) => `${fmL(r.key)} ${M.seasonIndex(r.key).toFixed(2)}`)
+            .join(", ")}
+          . Индекс считается по {M.established.length} консультантам, отработавшим опорное окно
+          прошлого года целиком — иначе он ловил бы не сезон, а то, что половина нынешней
+          команды год назад ещё не работала.
+          <br />
+          <b>Кто входит в прогноз.</b> Ушедшие выпадают со следующего месяца после последнего
+          рабочего ({LEFT.map((d) => `${d.name} по ${fmL(d.leftAt)}`).join(", ")}); их история
+          при этом не трогается и остаётся в конверсии.
+          {NEWCOMERS.length > 0 && (
             <>
               {" "}
-              И рост, и база за прошлый год считаются <b>только по тем, кто ещё работает</b>{" "}
-              ({ACTIVE.length} из {ACTIVE.length + LEFT.length} консультантов; ушли{" "}
-              {LEFT.map((d) => `${d.name} по ${fmL(d.leftAt)}`).join(", ")}). Иначе отношение
-              смешивало бы две разные вещи: изменение темпа работы и сокращение команды, —
-              а встречи ушедших попадали бы в базу будущих месяцев, хотя повториться не могут.
-              История при этом не трогается: их встречи остаются в своих месяцах и в конверсии.
+              Новички ({NEWCOMERS.map((d) => `${d.name} с ${fmL(d.startedAt)}`).join(", ")})
+              истории не имеют, экстраполировать нечего — им проставлена кривая разгона{" "}
+              {NEWCOMER_RAMP.join(" → ")} встреч по месяцам от выхода, медиана по шести
+              консультантам, вышедшим в 2026. Разброс там огромный: в первый полный месяц
+              от 0 до 26 встреч, так что это самая грубая часть прогноза.
             </>
           )}
           <br />
