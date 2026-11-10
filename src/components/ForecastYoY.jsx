@@ -77,6 +77,17 @@ function agg(monthKey, type) {
   return { m, s };
 }
 
+// То же, но только по тем, кто ещё работает. Нужно для прогноза будущих
+// встреч: ушедшие провели свои встречи в прошлом, но будущих не проведут.
+const ACTIVE = D.filter((d) => !d.leftAt);
+const LEFT = D.filter((d) => d.leftAt);
+
+function aggActive(monthKey, type) {
+  let m = 0;
+  for (const d of ACTIVE) m += gM(d, monthKey, type);
+  return m;
+}
+
 function wilson(successes, n) {
   if (!n) return { p: 0, lo: 0, hi: 0 };
   const p = successes / n;
@@ -109,21 +120,26 @@ function buildModel() {
   };
   const conv = { hot: convOf("hot"), cold: convOf("cold") };
 
-  // 2. Рост встреч год к году — им продлеваем поток встреч в будущее
+  // 2. Рост встреч год к году. Считается только по тем, кто ещё работает,
+  //    и в числителе, и в знаменателе — сравнение like-for-like. Если взять
+  //    всех, ушедшие сидят в обеих частях и отношение смешивает две разные
+  //    вещи: изменение темпа работы и сокращение команды.
   const recent = MONTHS_ALL.slice(-YOY_WINDOW);
   const growthOf = (type) => {
-    const now = recent.reduce((a, m) => a + agg(m, type).m, 0);
-    const before = recent.reduce((a, m) => a + agg(prevYear(m), type).m, 0);
+    const now = recent.reduce((a, m) => a + aggActive(m, type), 0);
+    const before = recent.reduce((a, m) => a + aggActive(prevYear(m), type), 0);
     return { now, before, k: before ? now / before : 1 };
   };
   const growth = { hot: growthOf("hot"), cold: growthOf("cold") };
 
-  // 3. Поток встреч: факт там, где месяц прошёл, иначе год назад × рост
+  // 3. Поток встреч: факт там, где месяц прошёл, иначе год назад × рост.
+  //    База за прошлый год тоже берётся по активным: встречи ушедших
+  //    в ноя'25 не повторятся в ноя'26.
   const meetingsOf = (m, type) => {
     if (MONTHS_ALL.includes(m)) return { n: agg(m, type).m, known: true };
     const ly = prevYear(m);
-    const fallback = recent.reduce((a, k) => a + agg(k, type).m, 0) / YOY_WINDOW;
-    const baseN = MONTHS_ALL.includes(ly) ? agg(ly, type).m : fallback;
+    const fallback = recent.reduce((a, k) => a + aggActive(k, type), 0) / YOY_WINDOW;
+    const baseN = MONTHS_ALL.includes(ly) ? aggActive(ly, type) : fallback;
     return { n: baseN * growth[type].k, known: false };
   };
 
@@ -404,8 +420,17 @@ export default function ForecastYoY() {
                 fill="var(--color-background-secondary,#E8EBEE)"
                 opacity={0.5}
               />
+              {/* Когда зона узкая, подпись слева от неё не помещается и наезжает
+                  на подпись правой оси — тогда прижимаем её к левому краю зоны */}
               <text
-                x={x(firstPartial) - step / 2 + 6}
+                x={
+                  W - padR - (x(firstPartial) - step / 2) > 150
+                    ? x(firstPartial) - step / 2 + 6
+                    : x(firstPartial) - step / 2 - 6
+                }
+                textAnchor={
+                  W - padR - (x(firstPartial) - step / 2) > 150 ? "start" : "end"
+                }
                 y={padT - 7}
                 fontSize={9}
                 fill="var(--color-text-secondary,#757987)"
@@ -773,6 +798,17 @@ export default function ForecastYoY() {
           {fmL(M.recent[M.recent.length - 1])}: горячие{" "}
           {signed((growth.hot.k - 1) * 100, 0)}%, холодные {signed((growth.cold.k - 1) * 100, 0)}
           %).
+          {LEFT.length > 0 && (
+            <>
+              {" "}
+              И рост, и база за прошлый год считаются <b>только по тем, кто ещё работает</b>{" "}
+              ({ACTIVE.length} из {ACTIVE.length + LEFT.length} консультантов; ушли{" "}
+              {LEFT.map((d) => `${d.name} по ${fmL(d.leftAt)}`).join(", ")}). Иначе отношение
+              смешивало бы две разные вещи: изменение темпа работы и сокращение команды, —
+              а встречи ушедших попадали бы в базу будущих месяцев, хотя повториться не могут.
+              История при этом не трогается: их встречи остаются в своих месяцах и в конверсии.
+            </>
+          )}
           <br />
           <b>Колонка «обеспечено прошедшими встречами»</b> показывает, какая доля прогноза месяца
           опирается на встречи, которые уже состоялись. У ближайших месяцев она близка к 100% —
