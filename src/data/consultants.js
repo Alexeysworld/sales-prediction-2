@@ -172,7 +172,7 @@ export const D = [
 
   // Вышли в ноябре '26 — истории ещё нет, поток встреч в прогнозе берётся
   // по кривой разгона новичка (NEWCOMER_RAMP в ForecastYoY.jsx)
-  { name: "Сергей К.", fullName: "Sergey K", team: "MS3", startedAt: "2026-11",
+  { name: "Сергей К.", fullName: "Sergey Koreykin", team: "MS3", startedAt: "2026-11",
     meetings: {}, sales: {}, hotM: {}, hotS: {} },
 
   { name: "Александр Л.", fullName: "Alexander L", team: "MS3", startedAt: "2026-11",
